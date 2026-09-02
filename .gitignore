@@ -1,0 +1,52 @@
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Secrets / environment ---
+.env
+.env.*
+!.env.example
+
+# --- Python cache / bytecode ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Build / packaging artifacts ---
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Test / coverage / lint caches ---
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Local databases ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Large local data / generated datasets ---
+data/
+!data/samples/
+!data/samples/**
+
+# --- IDE / editor ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- OS-generated ---
+.DS_Store
+Thumbs.db
