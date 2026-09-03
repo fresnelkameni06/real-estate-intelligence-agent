@@ -7,14 +7,24 @@ name = "real-estate-intelligence-agent"
 version = "0.1.0"
 description = "Real Estate Investment Intelligence Agent — Paris: analytics and natural-language exploration of the Paris residential real-estate market."
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 
+# No runtime dependencies yet. They are introduced progressively, by phase.
 dependencies = []
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
+]
+# Phase 1.2+ — data discovery & engineering (exploratory + pipeline).
+# pandas >=2.3.3 is the first release compatible with Python 3.14; httpx >=0.28
+# supports Python 3.14; pyarrow >=22 is the first with Python 3.14 wheels
+# (Parquet support). All resolve to current stable wheels under 3.14.
+discovery = [
+    "pandas>=2.3.3",
+    "httpx>=0.28",
+    "pyarrow>=22",
 ]
 
 [tool.setuptools]
@@ -28,7 +38,13 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py314"
+target-version = "py311"
 
 [tool.ruff.lint]
+# A reasonable, non-aggressive starter rule set:
+#   E, W  -> pycodestyle errors/warnings
+#   F     -> pyflakes (undefined names, unused imports, etc.)
+#   I     -> isort (import ordering)
+#   UP    -> pyupgrade (modern syntax)
+#   B     -> flake8-bugbear (likely bugs)
 select = ["E", "W", "F", "I", "UP", "B"]

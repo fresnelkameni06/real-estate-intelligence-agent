@@ -38,8 +38,18 @@ logs/
 
 # --- Large local data / generated datasets ---
 data/
+# Allow an explicitly committed small sample set later:
 !data/samples/
 !data/samples/**
+# ...but NEVER commit raw address-level DVF/DPE records, even if placed elsewhere:
+data/raw/
+*.csv.gz
+data/raw/dpe/*.json
+# Processed datasets are regenerated artifacts, never committed:
+data/processed/
+*.parquet
+# Machine-readable discovery/quality profiles (regenerated artifacts):
+docs/data-discovery/profile_output.json
 
 # --- IDE / editor ---
 .idea/
