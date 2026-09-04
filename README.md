@@ -7,12 +7,16 @@ official regulatory documents.
 
 ## Current status
 
-**Phase 2 — Data Engineering.** The Paris DVF pipeline (2021–2025) is
-implemented: idempotent acquisition, schema/encoding validation, exact-duplicate
-handling, residential component and mutation-level tables, and price/m²
-eligibility, with a quality report. See `docs/data-engineering/DVF_PIPELINE.md`.
-The DPE production pipeline, database, API, UI, RAG and AI features are not
-implemented yet.
+**Phase 5 — Local Data application.** The project currently provides:
+
+- validated DVF and DPE ingestion/processing pipelines;
+- a PostgreSQL schema, migrations and idempotent loaders;
+- a deterministic SQL/Python analytics engine;
+- a versioned FastAPI backend over aggregate analytics;
+- a Streamlit dashboard that consumes FastAPI without direct database access.
+
+RAG, LLM tools and agentic orchestration remain later phases and are not part of
+the current application.
 
 ## Target high-level capabilities (planned, not yet built)
 
@@ -26,7 +30,8 @@ These are delivered incrementally across later phases and are **not** available 
 
 ## Requirements
 
-- Python 3.11 or 3.12
+- Python 3.11 or newer
+- PostgreSQL with the Phase 3 schema and data loaded
 - Git
 
 ## Installation (Windows)
@@ -39,7 +44,7 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1
 
 python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,database,app]"
 ```
 
 If PowerShell blocks activation, use Command Prompt instead:
@@ -55,6 +60,71 @@ python -m pytest
 python -m ruff check .
 ```
 
+## Application configuration
+
+Copy `.env.example` to `.env`, then keep the real credentials only in `.env`:
+
+```dotenv
+DATABASE_URL=postgresql+psycopg://real_estate_app:YOUR_PASSWORD@localhost:5432/real_estate_db
+TEST_DATABASE_URL=postgresql+psycopg://real_estate_app:YOUR_PASSWORD@localhost:5432/real_estate_test
+API_BASE_URL=http://localhost:8000
+API_TIMEOUT_SECONDS=15
+```
+
+Percent-encode special password characters in database URLs. Never commit
+`.env`.
+
+## Running FastAPI and Streamlit on Windows
+
+Open two PowerShell terminals in the repository root with `venv3` activated.
+
+Terminal 1 — backend:
+
+```powershell
+py -m uvicorn --app-dir . app.api.main:app --reload
+```
+
+Useful backend URLs:
+
+- API liveness: <http://localhost:8000/health>
+- PostgreSQL readiness: <http://localhost:8000/ready>
+- interactive OpenAPI documentation: <http://localhost:8000/docs>
+
+Terminal 2 — dashboard:
+
+```powershell
+py -m streamlit run app/streamlit/app.py
+```
+
+Streamlit normally opens <http://localhost:8501> automatically.
+
+With FastAPI running, validate all critical real-data endpoints with:
+
+```powershell
+py scripts/validate_application.py
+```
+
+## Available aggregate API endpoints
+
+- `GET /api/v1/market/overview`
+- `GET /api/v1/market/trends`
+- `GET /api/v1/market/compare`
+- `GET /api/v1/market/rankings`
+- `GET /api/v1/dpe/distribution`
+- `GET /api/v1/dpe/intensity`
+- `GET /api/v1/areas/{arrondissement}/profile`
+
+All endpoints expose predefined aggregate calculations. There is no generic SQL
+endpoint and no address-level API.
+
+## Dashboard sections
+
+- market overview and annual price trend;
+- arrondissement rankings;
+- comparison of two to five arrondissements;
+- DPE label and energy-intensity analysis;
+- combined aggregate profile for one arrondissement.
+
 ## Notes
 
 - **Incremental implementation.** The project follows a phased roadmap; features
@@ -63,3 +133,9 @@ python -m ruff check .
   volumes, year-over-year evolution, comparisons, DPE distributions) are computed
   in SQL/Python. The LLM interprets structured results — it never guesses numeric
   market values.
+- **DPE limitation.** DPE results describe recorded eligible diagnostics, not a
+  census of the entire Paris housing stock. The 2026 DPE year is partial.
+- **No naive join.** DVF and DPE are combined only as arrondissement/period
+  aggregates, never record by record through textual addresses.
+- **Informational use.** The displayed analytics do not constitute financial
+  advice.

@@ -34,6 +34,14 @@ database = [
     "alembic>=1.19",
     "pydantic-settings>=2.7",
 ]
+# Phase 5 — local FastAPI backend and Streamlit dashboard.
+app = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "streamlit>=1.45",
+    "httpx>=0.28",
+    "plotly>=6.0",
+]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -43,6 +51,9 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The HTTP/UI entry points intentionally live in the repository-level app/
+# package. Add the project root explicitly for consistent Windows/Linux imports.
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
@@ -56,3 +67,6 @@ target-version = "py311"
 #   UP    -> pyupgrade (modern syntax)
 #   B     -> flake8-bugbear (likely bugs)
 select = ["E", "W", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "real_estate_agent"]
