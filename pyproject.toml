@@ -26,6 +26,14 @@ discovery = [
     "httpx>=0.28",
     "pyarrow>=22",
 ]
+# Phase 3.2 — PostgreSQL migrations and loading.
+# All support Python 3.14: SQLAlchemy 2.0.x, Alembic 1.19+, psycopg 3 (binary).
+database = [
+    "sqlalchemy>=2.0.44",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.19",
+    "pydantic-settings>=2.7",
+]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
