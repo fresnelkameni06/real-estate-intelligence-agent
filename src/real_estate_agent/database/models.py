@@ -1,14 +1,10 @@
-"""SQLAlchemy 2.0 models for the real_estate schema.
-
-Four tables: arrondissements (dimension), data_load_runs (audit),
-dvf_mutations (fact), dpe_diagnostics (fact). DVF and DPE share no direct
-foreign key; both reference arrondissements. Monetary values use NUMERIC.
-"""
+"""SQLAlchemy 2.0 models for the structured and RAG data stores."""
 
 from __future__ import annotations
 
 from datetime import date, datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -26,6 +22,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 SCHEMA = "real_estate"
@@ -225,4 +222,59 @@ class DpeDiagnostic(Base):
             "arrondissement",
             postgresql_where=(is_label_analysis_eligible == True),  # noqa: E712
         ),
+    )
+
+
+class RagDocumentChunk(Base):
+    """One official-document chunk and its OpenAI embedding."""
+
+    __tablename__ = "rag_document_chunks"
+
+    chunk_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    character_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    word_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    raw_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    chunking_version: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    publisher: Mapped[str] = mapped_column(Text, nullable=False)
+    source_page_url: Mapped[str] = mapped_column(Text, nullable=False)
+    download_url: Mapped[str] = mapped_column(Text, nullable=False)
+    document_format: Mapped[str] = mapped_column(String(8), nullable=False)
+    heading_path: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    page_start: Mapped[int | None] = mapped_column(Integer)
+    page_end: Mapped[int | None] = mapped_column(Integer)
+    topics: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    language: Mapped[str] = mapped_column(String(16), nullable=False)
+    jurisdiction: Mapped[str | None] = mapped_column(String(32))
+    authority_level: Mapped[str] = mapped_column(Text, nullable=False)
+    is_normative: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    effective_from: Mapped[date | None] = mapped_column(Date)
+    effective_until: Mapped[date | None] = mapped_column(Date)
+    quality_flags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    embedding_model: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding_dimensions: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
+    embedded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("char_length(chunk_id) = 64", name="ck_rag_chunk_id_length"),
+        CheckConstraint(
+            "char_length(content_sha256) = 64", name="ck_rag_content_sha_length"
+        ),
+        CheckConstraint("char_length(raw_sha256) = 64", name="ck_rag_raw_sha_length"),
+        CheckConstraint("chunk_index >= 0", name="ck_rag_chunk_index_nonnegative"),
+        CheckConstraint("character_count > 0", name="ck_rag_character_count_positive"),
+        CheckConstraint("word_count > 0", name="ck_rag_word_count_positive"),
+        CheckConstraint(
+            "document_format IN ('html', 'pdf')", name="ck_rag_document_format"
+        ),
+        CheckConstraint(
+            "embedding_dimensions = 1536", name="ck_rag_embedding_dimensions"
+        ),
+        UniqueConstraint("source_id", "chunk_index", name="uq_rag_source_chunk_index"),
+        Index("idx_rag_source_id", "source_id"),
     )

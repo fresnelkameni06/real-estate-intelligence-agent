@@ -42,11 +42,14 @@ app = [
     "httpx>=0.28",
     "plotly>=6.0",
 ]
-# Phase 6 — RAG document acquisition and processing (no LLM, no embeddings).
+# Phase 6 — RAG acquisition, processing, embeddings and vector retrieval.
 rag = [
     "beautifulsoup4>=4.12",
     "httpx>=0.28",
+    "openai>=2.0",
+    "pgvector>=0.3",
     "pydantic>=2.7",
+    "pydantic-settings>=2.7",
     "pypdf>=5.0",
 ]
 

@@ -7,16 +7,18 @@ official regulatory documents.
 
 ## Current status
 
-**Phase 5 — Local Data application.** The project currently provides:
+**Phase 6.4 — RAG embeddings and vector retrieval.** The project currently provides:
 
 - validated DVF and DPE ingestion/processing pipelines;
 - a PostgreSQL schema, migrations and idempotent loaders;
 - a deterministic SQL/Python analytics engine;
 - a versioned FastAPI backend over aggregate analytics;
-- a Streamlit dashboard that consumes FastAPI without direct database access.
+- a Streamlit dashboard that consumes FastAPI without direct database access;
+- acquisition, extraction and structure-aware chunking of six official documents;
+- idempotent OpenAI embeddings stored in PostgreSQL with pgvector;
+- exact cosine semantic search with traceable source metadata.
 
-RAG, LLM tools and agentic orchestration remain later phases and are not part of
-the current application.
+LLM answer generation, AI tools and agentic orchestration remain later phases.
 
 ## Target high-level capabilities (planned, not yet built)
 
@@ -44,7 +46,7 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1
 
 python -m pip install --upgrade pip
-python -m pip install -e ".[dev,database,app]"
+python -m pip install -e ".[dev,database,app,rag]"
 ```
 
 If PowerShell blocks activation, use Command Prompt instead:
@@ -69,10 +71,38 @@ DATABASE_URL=postgresql+psycopg://real_estate_app:YOUR_PASSWORD@localhost:5432/r
 TEST_DATABASE_URL=postgresql+psycopg://real_estate_app:YOUR_PASSWORD@localhost:5432/real_estate_test
 API_BASE_URL=http://localhost:8000
 API_TIMEOUT_SECONDS=15
+OPENAI_API_KEY=YOUR_PRIVATE_API_KEY
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_EMBEDDING_DIMENSIONS=1536
+OPENAI_EMBEDDING_BATCH_SIZE=64
 ```
 
 Percent-encode special password characters in database URLs. Never commit
 `.env`.
+
+## RAG embeddings and semantic retrieval
+
+The `vector` extension must be installed on the PostgreSQL server and enabled in
+both the development and test databases by a database administrator:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+Apply the application migration, embed the 116 local chunks, then run a retrieval
+test:
+
+```powershell
+py -m alembic upgrade head
+py scripts/embed_rag_chunks.py
+py scripts/embed_rag_chunks.py
+py scripts/search_rag.py "Quelles restrictions concernent les logements classés G ?"
+```
+
+The first embedding run calls OpenAI only for missing or changed chunks. The
+second run is an idempotent no-op (`0 embedded`, `116 unchanged`). Raw documents,
+processed documents and generated chunks remain ignored by Git. Semantic search
+returns source URLs and metadata but does not yet ask an LLM to draft an answer.
 
 ## Running FastAPI and Streamlit on Windows
 
