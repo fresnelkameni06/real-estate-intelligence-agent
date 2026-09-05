@@ -7,7 +7,7 @@ official regulatory documents.
 
 ## Current status
 
-**Phase 6.4 — RAG embeddings and vector retrieval.** The project currently provides:
+**Phase 6.5 — Grounded RAG answer generation.** The project currently provides:
 
 - validated DVF and DPE ingestion/processing pipelines;
 - a PostgreSQL schema, migrations and idempotent loaders;
@@ -17,8 +17,10 @@ official regulatory documents.
 - acquisition, extraction and structure-aware chunking of six official documents;
 - idempotent OpenAI embeddings stored in PostgreSQL with pgvector;
 - exact cosine semantic search with traceable source metadata.
+- adaptive GPT answers grounded only in retrieved official passages;
+- verified inline citations and explicit abstention when evidence is insufficient.
 
-LLM answer generation, AI tools and agentic orchestration remain later phases.
+AI tools and agentic orchestration remain later phases.
 
 ## Target high-level capabilities (planned, not yet built)
 
@@ -75,6 +77,11 @@ OPENAI_API_KEY=YOUR_PRIVATE_API_KEY
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_EMBEDDING_DIMENSIONS=1536
 OPENAI_EMBEDDING_BATCH_SIZE=64
+OPENAI_CHAT_MODEL=gpt-5.6-luna
+OPENAI_CHAT_MAX_OUTPUT_TOKENS=1600
+RAG_RETRIEVAL_TOP_K=5
+RAG_MINIMUM_SIMILARITY=0.42
+RAG_CONTEXT_MAX_CHARACTERS=12000
 ```
 
 Percent-encode special password characters in database URLs. Never commit
@@ -101,8 +108,20 @@ py scripts/search_rag.py "Quelles restrictions concernent les logements classés
 
 The first embedding run calls OpenAI only for missing or changed chunks. The
 second run is an idempotent no-op (`0 embedded`, `116 unchanged`). Raw documents,
-processed documents and generated chunks remain ignored by Git. Semantic search
-returns source URLs and metadata but does not yet ask an LLM to draft an answer.
+processed documents and generated chunks remain ignored by Git.
+
+Generate a user-facing answer grounded in the retrieved passages:
+
+```powershell
+py scripts/ask_rag.py "Combien de temps un DPE est-il valable ?"
+py scripts/ask_rag.py "Explique en détail les restrictions pour un logement G."
+py scripts/ask_rag.py "Résume le rôle du DPE." --style brief
+```
+
+The default `auto` style follows the user's requested level of detail. Normal
+output contains the answer and only the sources actually cited. Use
+`--show-passages` only for debugging. If the indexed evidence is insufficient,
+the service says so instead of completing the answer from model memory.
 
 ## Running FastAPI and Streamlit on Windows
 
