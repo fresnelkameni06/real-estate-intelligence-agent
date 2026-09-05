@@ -42,6 +42,13 @@ app = [
     "httpx>=0.28",
     "plotly>=6.0",
 ]
+# Phase 6 — RAG document acquisition and processing (no LLM, no embeddings).
+rag = [
+    "beautifulsoup4>=4.12",
+    "httpx>=0.28",
+    "pydantic>=2.7",
+    "pypdf>=5.0",
+]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
