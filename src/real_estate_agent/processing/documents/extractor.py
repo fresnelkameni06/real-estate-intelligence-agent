@@ -37,7 +37,7 @@ _INTERFACE_LABELS = frozenset(
         "Ressources communautaires", "Informations", "Télécharger", "Telecharger",
         "Menu", "Rechercher", "Connexion", "Inscription", "Accueil",
         "Partager", "Imprimer", "Fermer", "Retour", "Suivant", "Précédent",
-        "Precedent",
+        "Precedent", "Paramètres d'affichage", "Parametres d'affichage",
     )
 )
 

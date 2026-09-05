@@ -87,6 +87,18 @@ def test_html_removes_datagouv_interface_labels():
         assert noise not in texts
 
 
+def test_html_removes_display_settings_label():
+    html = b"""<article><h2>Param\xc3\xa8tres d'affichage</h2>
+    <h1>Diagnostic de performance \xc3\xa9nerg\xc3\xa9tique</h1>
+    <p>Le contenu officiel reste disponible.</p></article>"""
+    elements, _ = extract_html(html)
+    texts = [element.text for element in elements]
+
+    assert "Paramètres d'affichage" not in texts
+    assert "Diagnostic de performance énergétique" in texts
+    assert "Le contenu officiel reste disponible." in texts
+
+
 def test_html_preserves_documentary_content():
     elements, _ = extract_html(_NOISY_HTML)
     kinds = {e.kind for e in elements}
