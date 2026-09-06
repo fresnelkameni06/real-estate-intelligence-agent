@@ -6,10 +6,10 @@ services:
     region: frankfurt
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    dockerCommand: python -m uvicorn --app-dir . app.api.main:app --host 0.0.0.0 --port $PORT
-    preDeployCommand: python -m alembic upgrade head
     healthCheckPath: /health
-    autoDeployTrigger: commit
+    # The Dockerfile command applies Alembic migrations before starting Uvicorn.
+    # Render deploys only after every GitHub CI check succeeds.
+    autoDeployTrigger: checksPass
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -33,7 +33,7 @@ services:
     dockerContext: .
     dockerCommand: python -m streamlit run app/streamlit/app.py --server.address=0.0.0.0 --server.port=$PORT --server.headless=true --browser.gatherUsageStats=false
     healthCheckPath: /_stcore/health
-    autoDeployTrigger: commit
+    autoDeployTrigger: checksPass
     envVars:
       - key: API_HOSTPORT
         fromService:

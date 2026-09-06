@@ -31,6 +31,8 @@ def test_compose_defines_pgvector_healthchecks_and_private_service_url():
     assert "pg_isready" in compose
     assert "API_BASE_URL: http://api:8000" in compose
     assert "condition: service_healthy" in compose
+    assert "postgres_data:/var/lib/postgresql\n" in compose
+    assert "postgres_data:/var/lib/postgresql/data" not in compose
     assert "OPENAI_API_KEY_FILE: /run/secrets/openai_api_key" in compose
     assert "environment: OPENAI_API_KEY" in compose
     assert "OPENAI_API_KEY: ${" not in compose
@@ -44,4 +46,6 @@ def test_render_blueprint_keeps_secrets_external_and_links_services():
     assert "property: connectionString" in blueprint
     assert "property: hostport" in blueprint
     assert "postgresMajorVersion: \"18\"" in blueprint
+    assert blueprint.count("autoDeployTrigger: checksPass") == 2
+    assert "preDeployCommand" not in blueprint
     assert "sk-" not in blueprint

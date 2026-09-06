@@ -74,6 +74,18 @@ python -m pytest
 python -m ruff check .
 ```
 
+## Continuous integration and deployment
+
+GitHub Actions runs on every push and pull request targeting `main`. The CI
+workflow performs linting, executes the complete test suite against an isolated
+PostgreSQL 18 database with pgvector, validates the Compose file, and builds the
+production Docker image. It does not use an OpenAI or production database
+secret.
+
+Both Render web services use `autoDeployTrigger: checksPass`: a commit on `main`
+is deployed only after all GitHub CI checks succeed. A failed test or container
+build therefore blocks the deployment automatically.
+
 ## Application configuration
 
 Copy `.env.example` to `.env`, then keep the real credentials only in `.env`:
