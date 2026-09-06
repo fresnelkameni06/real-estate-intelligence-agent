@@ -29,16 +29,16 @@ DPE_COLORS = {
 # Pages that use the single global "Zone analysée" selector.
 GLOBAL_AREA_PAGES = {"Vue d’ensemble", "DPE", "Profil arrondissement"}
 
-# Questions supported by the current official-document RAG corpus.
-RAG_EXAMPLE_QUESTIONS = [
-    "Combien de temps un DPE est-il valable ?",
-    "Quelles contraintes concernent un logement classé G ?",
-    "Quand un audit énergétique est-il obligatoire lors d’une vente ?",
-    "À quoi servent les données DVF et quelles sont leurs limites ?",
+# Examples intentionally cover separate and combined agent capabilities.
+AGENT_EXAMPLE_QUESTIONS = [
+    "Quel est le prix médian au m² dans le 13e entre 2021 et 2025 ?",
+    "Compare le marché immobilier du 13e et du 20e arrondissement.",
+    "Quelle est la répartition DPE dans le 15e arrondissement ?",
+    "Quelles restrictions concernent les logements classés G ?",
 ]
 
-RAG_PAGE = "✨ Analyste IA — RAG actif"
-RAG_CHAT_STATE_KEY = "rag_chat_messages"
+AGENT_PAGE = "✨ Analyste IA — Agent actif"
+AGENT_CHAT_STATE_KEY = "agent_chat_messages"
 
 # Roadmap shown on the active assistant page (honest project status).
 AI_ROADMAP = [
@@ -48,8 +48,8 @@ AI_ROADMAP = [
     ("FastAPI", True),
     ("Streamlit", True),
     ("RAG documentaire", True),
-    ("AI Tools", False),
-    ("AI Agent", False),
+    ("AI Tools", True),
+    ("AI Agent", True),
 ]
 
 st.set_page_config(
@@ -87,7 +87,7 @@ def run_request(call: Any, *args: Any) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# Active documentary assistant (RAG through FastAPI; no direct LLM import)
+# Multi-tool assistant (Agent through FastAPI; no direct LLM/database import)
 # --------------------------------------------------------------------------- #
 
 def _inject_ai_styles() -> None:
@@ -169,13 +169,13 @@ def _inject_ai_styles() -> None:
 
 
 def render_ai_hero() -> None:
-    """Render the animated active-RAG hero below the title/description."""
+    """Render the animated multi-tool-agent hero below the title/description."""
     _inject_ai_styles()
 
     # Rotate the example question on each rerun (stable, no JS).
     idx = st.session_state.get("_ai_q_index", 0)
-    question = RAG_EXAMPLE_QUESTIONS[idx % len(RAG_EXAMPLE_QUESTIONS)]
-    st.session_state["_ai_q_index"] = (idx + 1) % len(RAG_EXAMPLE_QUESTIONS)
+    question = AGENT_EXAMPLE_QUESTIONS[idx % len(AGENT_EXAMPLE_QUESTIONS)]
+    st.session_state["_ai_q_index"] = (idx + 1) % len(AGENT_EXAMPLE_QUESTIONS)
 
     st.markdown(
         f"""
@@ -184,11 +184,11 @@ def render_ai_hero() -> None:
             <div class="ai-orb"></div>
             <div>
               <p class="ai-hero-title">🤖 Analyste IA immobilier
-                <span class="ai-badge">RAG ACTIF</span>
+                <span class="ai-badge">AGENT ACTIF</span>
               </p>
               <p class="ai-hero-sub">
-                Interrogez les sources officielles sur le DPE, la réglementation
-                énergétique et la méthodologie DVF.
+                Explorez les prix, les arrondissements, le DPE et la réglementation
+                dans une conversation unique.
               </p>
               <p class="ai-hero-q">« {question} »</p>
             </div>
@@ -198,7 +198,7 @@ def render_ai_hero() -> None:
         unsafe_allow_html=True,
     )
     if st.button("✨ Ouvrir l’Analyste IA", key="ai_hero_button"):
-        st.session_state["nav_page"] = RAG_PAGE
+        st.session_state["nav_page"] = AGENT_PAGE
         st.rerun()
 
 
@@ -208,13 +208,15 @@ def initial_chat_messages() -> list[dict[str, Any]]:
         {
             "role": "assistant",
             "content": (
-                "Bonjour ! Je suis l’assistant documentaire du projet. Posez-moi "
-                "une question sur le **DPE**, les **passoires énergétiques**, "
-                "l’**audit énergétique** ou la **méthodologie DVF**. Mes réponses "
-                "s’appuient uniquement sur les documents officiels indexés."
+                "Bonjour ! Je suis votre **Analyste IA immobilier pour Paris**. "
+                "Je peux analyser les **prix**, comparer les **arrondissements**, "
+                "étudier le **DPE** et consulter les **sources officielles**. "
+                "Vous pouvez aussi poursuivre avec une question comme « et le 15e ? »."
             ),
             "citations": [],
             "insufficient_context": False,
+            "tool_executions": [],
+            "visualizations": [],
         }
     ]
 
@@ -264,13 +266,79 @@ def render_rag_sources(citations: list[Mapping[str, Any]]) -> None:
                 st.markdown(f"[Consulter la source officielle]({url})")
 
 
-def render_chat_message(message: Mapping[str, Any]) -> None:
+def build_agent_figure(visualization: Mapping[str, Any]) -> go.Figure:
+    """Build a Plotly figure exclusively from the API's validated chart payload."""
+    labels = [str(item) for item in visualization.get("labels", [])]
+    values = [float(item) for item in visualization.get("values", [])]
+    chart_type = str(visualization.get("chart_type", "bar"))
+    visualization_id = str(visualization.get("visualization_id", ""))
+
+    if chart_type == "line":
+        trace: Any = go.Scatter(
+            x=labels,
+            y=values,
+            mode="lines+markers",
+            line={"color": "#2C7BE5", "width": 3},
+            marker={"size": 8},
+            hovertemplate="%{x}<br>%{y:,.0f}<extra></extra>",
+        )
+    else:
+        colors: str | list[str] = "#2C7BE5"
+        if visualization_id == "dpe-label-distribution":
+            colors = [DPE_COLORS.get(label, "#2C7BE5") for label in labels]
+        trace = go.Bar(
+            x=labels,
+            y=values,
+            marker_color=colors,
+            hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>",
+        )
+
+    figure = go.Figure(trace)
+    figure.update_layout(
+        title=str(visualization.get("title", "Visualisation")),
+        xaxis_title=str(visualization.get("x_axis_title", "")),
+        yaxis_title=str(visualization.get("y_axis_title", "")),
+        height=360,
+        margin={"l": 20, "r": 20, "t": 60, "b": 20},
+        showlegend=False,
+    )
+    return figure
+
+
+def render_agent_visualizations(
+    visualizations: list[Mapping[str, Any]],
+    *,
+    message_key: str,
+) -> None:
+    """Display deterministic tool charts directly below an Agent answer."""
+    for index, visualization in enumerate(visualizations):
+        figure = build_agent_figure(visualization)
+        visualization_id = str(
+            visualization.get("visualization_id", f"chart-{index}")
+        )
+        st.plotly_chart(
+            figure,
+            width="stretch",
+            key=f"agent-chart-{message_key}-{index}-{visualization_id}",
+        )
+
+
+def render_chat_message(
+    message: Mapping[str, Any],
+    *,
+    message_key: str = "persisted",
+) -> None:
     """Render one persisted chat message and its optional provenance."""
     role = str(message.get("role", "assistant"))
     avatar = "🏛️" if role == "assistant" else "👤"
     with st.chat_message(role, avatar=avatar):
         st.markdown(str(message.get("content", "")))
+        render_agent_visualizations(
+            list(message.get("visualizations", [])),
+            message_key=message_key,
+        )
         render_rag_sources(list(message.get("citations", [])))
+        render_agent_trace(list(message.get("tool_executions", [])))
         if message.get("insufficient_context"):
             st.caption(
                 "Le corpus actuel ne contient pas assez d’éléments fiables pour "
@@ -278,8 +346,19 @@ def render_chat_message(message: Mapping[str, Any]) -> None:
             )
 
 
-def render_rag_chat(client: RealEstateApiClient) -> None:
-    """Render a compact documentary chat designed for future agent expansion."""
+def render_agent_trace(executions: list[Mapping[str, Any]]) -> None:
+    """Show the exact technical names of successful tools for transparency."""
+    used = [
+        str(execution.get("name", ""))
+        for execution in executions
+        if execution.get("success")
+    ]
+    if used:
+        st.caption("Outils : " + " · ".join(used))
+
+
+def render_agent_chat(client: RealEstateApiClient) -> None:
+    """Render the compact multi-tool agent with bounded session memory."""
     _inject_ai_styles()
     st.markdown(
         """
@@ -288,12 +367,12 @@ def render_rag_chat(client: RealEstateApiClient) -> None:
             <div class="ai-orb ai-orb-compact"></div>
             <div>
               <p class="ai-hero-title">🤖 Analyste IA immobilier
-                <span class="ai-badge">RAG ACTIF</span>
+                <span class="ai-badge">AGENT ACTIF</span>
               </p>
               <p class="ai-hero-sub">
                 <span class="ai-status-dot"></span>
-                Posez votre question naturellement. Les réponses documentaires
-                sont vérifiées dans les sources officielles.
+                Posez votre question naturellement : l’Agent choisit les outils
+                nécessaires et conserve le contexte récent.
               </p>
             </div>
           </div>
@@ -303,47 +382,47 @@ def render_rag_chat(client: RealEstateApiClient) -> None:
     )
 
     st.caption(
-        "Sources actuelles : DPE · réglementation énergétique · audit · DVF/ADEME. "
-        "Les prix, comparaisons et graphiques seront connectés à la phase Agent."
+        "Données : DVF + DPE dans PostgreSQL · réglementation issue de 6 sources "
+        "officielles · aucune requête SQL libre."
     )
 
     title_col, action_col = st.columns([6, 1])
     title_col.markdown("### Conversation")
     if action_col.button(
         "↻ Effacer",
-        key="clear_rag_chat",
+        key="clear_agent_chat",
         use_container_width=True,
         help="Effacer uniquement l’historique affiché dans cette session.",
     ):
-        st.session_state[RAG_CHAT_STATE_KEY] = initial_chat_messages()
+        st.session_state[AGENT_CHAT_STATE_KEY] = initial_chat_messages()
         st.rerun()
 
-    messages = st.session_state.get(RAG_CHAT_STATE_KEY)
+    messages = st.session_state.get(AGENT_CHAT_STATE_KEY)
     if not isinstance(messages, list):
         messages = initial_chat_messages()
-        st.session_state[RAG_CHAT_STATE_KEY] = messages
+        st.session_state[AGENT_CHAT_STATE_KEY] = messages
 
     suggested_question: str | None = None
     if len(messages) == 1:
         st.markdown("**Suggestions**")
         columns = st.columns(2)
-        for index, question in enumerate(RAG_EXAMPLE_QUESTIONS):
+        for index, question in enumerate(AGENT_EXAMPLE_QUESTIONS):
             with columns[index % 2]:
                 if st.button(
                     question,
-                    key=f"rag_example_{index}",
+                    key=f"agent_example_{index}",
                     use_container_width=True,
                 ):
                     suggested_question = question
 
     chat_window = st.container(height=520, border=True)
     with chat_window:
-        for message in messages:
-            render_chat_message(message)
+        for index, message in enumerate(messages):
+            render_chat_message(message, message_key=f"history-{index}")
 
     submitted_question = st.chat_input(
         "Écrivez votre message…",
-        key="rag_chat_input",
+        key="agent_chat_input",
         max_chars=2_000,
     )
     question = submitted_question or suggested_question
@@ -353,19 +432,25 @@ def render_rag_chat(client: RealEstateApiClient) -> None:
     user_message = {"role": "user", "content": question}
     messages.append(user_message)
     with chat_window:
-        render_chat_message(user_message)
+        render_chat_message(user_message, message_key=f"current-{len(messages)}")
         with st.chat_message("assistant", avatar="🏛️"):
             try:
                 with st.status(
                     "Analyse de votre demande…",
                     expanded=True,
                 ) as status:
-                    st.write("Identification du type de question…")
-                    payload = client.ask_rag(question, "auto")
-                    completion_label = (
-                        "Réponse conversationnelle"
-                        if payload.get("model") == "local-conversation-router"
-                        else "Réponse vérifiée dans les sources officielles"
+                    st.write("Sélection des outils utiles…")
+                    payload = client.ask_agent(question, messages[:-1])
+                    route_labels = {
+                        "conversation": "Réponse conversationnelle",
+                        "market": "Analyse du marché terminée",
+                        "dpe": "Analyse énergétique terminée",
+                        "documentary": "Réponse vérifiée dans les sources",
+                        "combined": "Analyse multi-outils terminée",
+                    }
+                    completion_label = route_labels.get(
+                        str(payload.get("route")),
+                        "Analyse terminée",
                     )
                     status.update(
                         label=completion_label,
@@ -373,11 +458,20 @@ def render_rag_chat(client: RealEstateApiClient) -> None:
                         expanded=False,
                     )
                 st.markdown(str(payload.get("answer", "")))
+                visualizations = list(payload.get("visualizations", []))
+                render_agent_visualizations(
+                    visualizations,
+                    message_key=f"current-{len(messages)}-assistant",
+                )
                 render_rag_sources(list(payload.get("citations", [])))
+                tool_executions = list(payload.get("tool_executions", []))
+                render_agent_trace(tool_executions)
                 assistant_message = {
                     "role": "assistant",
                     "content": payload.get("answer", ""),
                     "citations": payload.get("citations", []),
+                    "tool_executions": tool_executions,
+                    "visualizations": visualizations,
                     "insufficient_context": payload.get(
                         "insufficient_context", False
                     ),
@@ -393,9 +487,11 @@ def render_rag_chat(client: RealEstateApiClient) -> None:
                     "content": error_message,
                     "citations": [],
                     "insufficient_context": False,
+                    "tool_executions": [],
+                    "visualizations": [],
                 }
     messages.append(assistant_message)
-    st.session_state[RAG_CHAT_STATE_KEY] = messages
+    st.session_state[AGENT_CHAT_STATE_KEY] = messages
 
 
 # --------------------------------------------------------------------------- #
@@ -740,7 +836,7 @@ PAGES = [
     "Comparaison",
     "DPE",
     "Profil arrondissement",
-    RAG_PAGE,
+    AGENT_PAGE,
 ]
 
 
@@ -756,7 +852,7 @@ def main() -> None:
     )
 
     # Analytics pages advertise the assistant. Its own page renders one header only.
-    if st.session_state["nav_page"] != RAG_PAGE:
+    if st.session_state["nav_page"] != AGENT_PAGE:
         render_ai_hero()
 
     with st.sidebar:
@@ -766,11 +862,10 @@ def main() -> None:
         start_year, end_year = (2021, 2025)
         area_choice: int | None = None
         st.divider()
-        if page == RAG_PAGE:
-            st.success("RAG documentaire actif")
+        if page == AGENT_PAGE:
+            st.success("Agent multi-outils actif")
             st.caption(
-                "Corpus : 6 sources officielles · réponses citées · "
-                "abstention si les preuves sont insuffisantes."
+                "Mémoire de session · Analytics PostgreSQL · RAG avec citations."
             )
         else:
             st.header("Filtres")
@@ -793,8 +888,8 @@ def main() -> None:
         st.caption(f"API : {api_client().base_url}")
 
     client = api_client()
-    if page == RAG_PAGE:
-        render_rag_chat(client)
+    if page == AGENT_PAGE:
+        render_agent_chat(client)
         return
 
     if end_year == 2026:

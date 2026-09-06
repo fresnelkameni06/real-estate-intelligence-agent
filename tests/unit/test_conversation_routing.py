@@ -10,11 +10,12 @@ def test_common_social_messages_receive_friendly_replies():
     assert "Au revoir" in local_conversation_reply("Au revoir")
 
 
-def test_capability_question_explains_current_and_future_scope():
+def test_capability_question_explains_current_agent_scope():
     answer = local_conversation_reply("Tu peux faire quoi ?")
     assert answer is not None
     assert "DPE" in answer
-    assert "prochaine version" in answer
+    assert "PostgreSQL" in answer
+    assert "arrondissements" in answer
 
 
 def test_documentary_question_is_left_to_rag():

@@ -15,7 +15,7 @@ class ServiceUnavailableError(RuntimeError):
 
 
 class AiServiceUnavailableError(RuntimeError):
-    """Raised when the bounded RAG answer service cannot complete a request."""
+    """Raised when a bounded AI service cannot complete a request."""
 
 
 def _error_response(
@@ -81,7 +81,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return _error_response(
             503,
             "ai_service_unavailable",
-            "The documentary answer service is temporarily unavailable.",
+            "The AI service is temporarily unavailable.",
         )
 
     @app.exception_handler(SQLAlchemyError)

@@ -11,6 +11,11 @@ from threading import Lock
 from sqlalchemy import Engine
 
 from app.api.errors import AiServiceUnavailableError, ServiceUnavailableError
+from real_estate_agent.agent import (
+    AgentService,
+    AgentSettings,
+    OpenAIResponsesAgentModel,
+)
 from real_estate_agent.database.config import load_settings
 from real_estate_agent.database.engine import make_engine
 from real_estate_agent.rag.embeddings import (
@@ -23,11 +28,14 @@ from real_estate_agent.rag.generation import (
     RagAnswerService,
     RagGenerationSettings,
 )
+from real_estate_agent.tools import build_tool_registry
 
 _engine: Engine | None = None
 _engine_lock = Lock()
 _rag_answer_service: RagAnswerService | None = None
 _rag_service_lock = Lock()
+_agent_service: AgentService | None = None
+_agent_service_lock = Lock()
 
 
 def get_database_engine() -> Engine:
@@ -100,3 +108,41 @@ def dispose_rag_answer_service() -> None:
 
     with _rag_service_lock:
         _rag_answer_service = None
+
+
+def get_agent_service() -> AgentService:
+    """Return the process-wide agent composed from the approved local tools."""
+    global _agent_service
+
+    if _agent_service is not None:
+        return _agent_service
+
+    with _agent_service_lock:
+        if _agent_service is None:
+            try:
+                settings = AgentSettings()
+                _agent_service = AgentService(
+                    model=OpenAIResponsesAgentModel(
+                        api_key=settings.require_api_key(),
+                        model=settings.model,
+                        timeout_seconds=settings.timeout_seconds,
+                    ),
+                    registry=build_tool_registry(
+                        get_database_engine(),
+                        get_rag_answer_service(),
+                    ),
+                    max_tool_rounds=settings.max_tool_rounds,
+                    max_history_messages=settings.max_history_messages,
+                    max_output_tokens=settings.max_output_tokens,
+                )
+            except (RuntimeError, ValueError) as exc:
+                raise AiServiceUnavailableError from exc
+    return _agent_service
+
+
+def dispose_agent_service() -> None:
+    """Release the cached agent composition during application shutdown."""
+    global _agent_service
+
+    with _agent_service_lock:
+        _agent_service = None

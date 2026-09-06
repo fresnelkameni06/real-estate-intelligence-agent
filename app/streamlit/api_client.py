@@ -10,7 +10,7 @@ import httpx
 
 DEFAULT_API_BASE_URL = "http://localhost:8000"
 DEFAULT_TIMEOUT_SECONDS = 15.0
-DEFAULT_AI_TIMEOUT_SECONDS = 90.0
+DEFAULT_AI_TIMEOUT_SECONDS = 180.0
 
 
 class ApiClientError(RuntimeError):
@@ -225,5 +225,24 @@ class RealEstateApiClient:
         return self.post_json(
             "/api/v1/rag/answer",
             {"question": question, "style": style},
+            timeout_seconds=self._ai_timeout_seconds,
+        )
+
+    def ask_agent(
+        self,
+        message: str,
+        history: Sequence[Mapping[str, str]] = (),
+    ) -> dict[str, Any]:
+        """Send one turn and bounded session history to the multi-tool agent."""
+        bounded_history = [
+            {
+                "role": str(item.get("role", "")),
+                "content": str(item.get("content", "")),
+            }
+            for item in list(history)[-12:]
+        ]
+        return self.post_json(
+            "/api/v1/agent/chat",
+            {"message": message, "history": bounded_history},
             timeout_seconds=self._ai_timeout_seconds,
         )

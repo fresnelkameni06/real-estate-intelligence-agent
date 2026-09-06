@@ -10,6 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from real_estate_agent.agent.models import ConversationMessage
 from real_estate_agent.rag.generation.models import AnswerStyle
 
 
@@ -54,4 +55,19 @@ class RagAnswerRequest(BaseModel):
         value = value.strip()
         if not value:
             raise ValueError("question must not be blank")
+        return value
+
+
+class AgentChatRequest(BaseModel):
+    """One message plus bounded session history for the multi-tool agent."""
+
+    message: str = Field(min_length=1, max_length=2_000)
+    history: list[ConversationMessage] = Field(default_factory=list, max_length=12)
+
+    @field_validator("message")
+    @classmethod
+    def message_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("message must not be blank")
         return value

@@ -74,6 +74,39 @@ def test_client_posts_documentary_question_to_rag_endpoint():
         client.close()
 
 
+def test_client_posts_bounded_history_to_agent_endpoint():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/v1/agent/chat"
+        payload = request.read()
+        assert b'"message":"Et le 15e ?"' in payload
+        assert b'"role":"assistant"' in payload
+        return httpx.Response(
+            200,
+            json={
+                "question": "Et le 15e ?",
+                "answer": "Réponse marché.",
+                "route": "market",
+                "tool_executions": [],
+                "citations": [],
+            },
+        )
+
+    client = RealEstateApiClient(
+        base_url="http://test",
+        ai_timeout_seconds=30,
+        transport=httpx.MockTransport(handler),
+    )
+    history = [
+        {"role": "assistant", "content": "Résultat précédent"},
+    ]
+    try:
+        result = client.ask_agent("Et le 15e ?", history)
+        assert result["route"] == "market"
+    finally:
+        client.close()
+
+
 def test_client_surfaces_controlled_api_message():
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(

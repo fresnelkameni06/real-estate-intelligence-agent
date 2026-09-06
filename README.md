@@ -7,7 +7,7 @@ official regulatory documents.
 
 ## Current status
 
-**Phase 7 — Validated AI tools.** The project currently provides:
+**Phase 8 — Multi-tool AI Agent.** The project currently provides:
 
 - validated DVF and DPE ingestion/processing pipelines;
 - a PostgreSQL schema, migrations and idempotent loaders;
@@ -20,10 +20,10 @@ official regulatory documents.
 - adaptive GPT answers grounded only in retrieved official passages;
 - verified inline citations and explicit abstention when evidence is insufficient;
 - a secured FastAPI RAG endpoint and an active Streamlit chat with source display;
-- six provider-neutral tools with strict inputs and structured outputs for later
-  agentic orchestration.
-
-Agentic routing and multi-tool conversation remain a later phase.
+- six provider-neutral tools with strict inputs and structured outputs;
+- bounded model-directed orchestration across Analytics, DPE and documentary RAG;
+- short multi-turn session memory and an active Agent interface;
+- deterministic in-chat charts for trends, comparisons and DPE distributions.
 
 ## High-level capabilities
 
@@ -33,8 +33,8 @@ Agentic routing and multi-tool conversation remain a later phase.
 - Retrieval-augmented answers over official DVF/DPE and regulatory documents
 - Natural-language questions answered via validated, tool-based AI orchestration
 
-The underlying analytics and documentary capabilities are available today. The
-natural-language router that chooses among them is introduced in Phase 8.
+These capabilities are available through both dedicated dashboard pages and the
+natural-language Agent.
 
 ## Requirements
 
@@ -77,13 +77,18 @@ DATABASE_URL=postgresql+psycopg://real_estate_app:YOUR_PASSWORD@localhost:5432/r
 TEST_DATABASE_URL=postgresql+psycopg://real_estate_app:YOUR_PASSWORD@localhost:5432/real_estate_test
 API_BASE_URL=http://localhost:8000
 API_TIMEOUT_SECONDS=15
-AI_API_TIMEOUT_SECONDS=90
+AI_API_TIMEOUT_SECONDS=180
 OPENAI_API_KEY=YOUR_PRIVATE_API_KEY
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_EMBEDDING_DIMENSIONS=1536
 OPENAI_EMBEDDING_BATCH_SIZE=64
 OPENAI_CHAT_MODEL=gpt-5.6-luna
 OPENAI_CHAT_MAX_OUTPUT_TOKENS=1600
+OPENAI_AGENT_MODEL=gpt-5.6-luna
+OPENAI_AGENT_MAX_OUTPUT_TOKENS=1600
+OPENAI_REQUEST_TIMEOUT_SECONDS=90
+AGENT_MAX_TOOL_ROUNDS=4
+AGENT_MAX_HISTORY_MESSAGES=12
 RAG_RETRIEVAL_TOP_K=5
 RAG_MINIMUM_SIMILARITY=0.42
 RAG_CONTEXT_MAX_CHARACTERS=12000
@@ -168,13 +173,14 @@ py scripts/validate_application.py
 - `GET /api/v1/dpe/intensity`
 - `GET /api/v1/areas/{arrondissement}/profile`
 - `POST /api/v1/rag/answer`
+- `POST /api/v1/agent/chat`
 
 All endpoints expose predefined aggregate calculations. There is no generic SQL
 endpoint and no address-level API.
 
 ## Validated AI tools
 
-Phase 7 exposes an internal allow-list for the future orchestration layer:
+Phase 7 exposes the internal allow-list used by the Phase 8 orchestrator:
 
 - `get_market_overview`
 - `get_market_trend`
@@ -188,6 +194,36 @@ result. Market and DPE tools reuse the deterministic analytics engine, while the
 documentary tool reuses grounded RAG. The registry provides no generic SQL or
 arbitrary-function capability.
 
+## Multi-tool Agent
+
+The Agent uses the OpenAI Responses API for bounded function calling. For each
+turn, the model can answer conversationally or select one or more approved tools.
+The application validates every tool argument, executes deterministic services,
+and sends only structured results back to the model for synthesis.
+
+```text
+User + recent session history
+        -> Agent model selects tools
+        -> validated allow-list executes
+        -> Analytics/PostgreSQL and/or documentary RAG
+        -> final answer + deterministic charts + tool trace + official citations
+```
+
+No unrestricted SQL, arbitrary Python function, address-level record or database
+credential is exposed to the model. The loop is limited to four tool rounds and
+the client sends at most twelve recent messages. Conversations are not persisted
+in PostgreSQL.
+
+Test the Agent from PowerShell without Streamlit:
+
+```powershell
+py scripts/chat_agent.py "Compare le 13e et le 20e arrondissement."
+py scripts/chat_agent.py
+```
+
+The second command opens an interactive conversation and retains short-term
+context until you type `quit`.
+
 ## Dashboard sections
 
 - market overview and annual price trend;
@@ -195,14 +231,16 @@ arbitrary-function capability.
 - comparison of two to five arrondissements;
 - DPE label and energy-intensity analysis;
 - combined aggregate profile for one arrondissement;
-- conversational documentary RAG with suggestions, history and official sources.
+- a multi-tool Agent with suggestions, short-term memory, dynamic charts and
+  official sources.
 
-The current chat answers each question independently. It does not yet route
-market questions to analytics tools or retain multi-turn memory; those
-capabilities belong to the later AI-tools and agentic-orchestration phases.
-Simple conversational messages such as greetings, acknowledgements and thanks
-are handled locally without an unnecessary embedding or generation API call;
-documentary questions continue through the grounded RAG pipeline.
+The Agent routes market questions to deterministic analytics, aggregate DPE
+questions to the DPE tool, and regulatory or methodological questions to grounded
+RAG. It can combine these capabilities in one answer. Simple greetings,
+acknowledgements and thanks are handled locally without an unnecessary API call.
+When a trend, arrondissement comparison or DPE distribution is returned, the
+API also exposes a validated chart payload that Streamlit renders with Plotly.
+The model never generates executable chart code.
 
 ## Notes
 

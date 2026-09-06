@@ -8,9 +8,20 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
-from app.api.dependencies import get_database_engine, get_rag_answer_service
+from app.api.dependencies import (
+    get_agent_service,
+    get_database_engine,
+    get_rag_answer_service,
+)
 from app.api.main import app
 from app.api.routes import analytics as analytics_routes
+from real_estate_agent.agent import (
+    AgentAnswerResult,
+    AgentOrchestrationError,
+    AgentVisualization,
+    ConversationMessage,
+    ToolExecutionSummary,
+)
 from real_estate_agent.analytics.models import (
     AppliedFilters,
     AreaMarketMetrics,
@@ -53,6 +64,7 @@ def _overview(arrondissement: int | None = None) -> MarketOverview:
 def client() -> Iterator[TestClient]:
     app.dependency_overrides[get_database_engine] = lambda: object()
     app.dependency_overrides[get_rag_answer_service] = lambda: object()
+    app.dependency_overrides[get_agent_service] = lambda: object()
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -72,6 +84,7 @@ def test_openapi_documents_versioned_routes(client: TestClient):
     assert "/api/v1/dpe/distribution" in paths
     assert "/api/v1/areas/{arrondissement}/profile" in paths
     assert "/api/v1/rag/answer" in paths
+    assert "/api/v1/agent/chat" in paths
 
 
 def test_readiness_success(client: TestClient):
@@ -339,3 +352,103 @@ def test_rag_provider_failure_does_not_leak_details(client: TestClient):
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "ai_service_unavailable"
     assert "private provider detail" not in response.text
+
+
+def test_agent_chat_contract_and_history(client: TestClient):
+    class FakeAgentService:
+        def answer(
+            self,
+            question: str,
+            *,
+            history: list[ConversationMessage],
+        ) -> AgentAnswerResult:
+            assert question == "Et dans le 15e ?"
+            assert history == [
+                ConversationMessage(
+                    role="assistant",
+                    content="Le 13e coûte environ 10 000 €/m².",
+                )
+            ]
+            return AgentAnswerResult(
+                question=question,
+                answer="Le prix médian du 15e est de 9 500 €/m².",
+                route="market",
+                tool_executions=[
+                    ToolExecutionSummary(name="get_market_overview", success=True)
+                ],
+                visualizations=[
+                    AgentVisualization(
+                        visualization_id="market-trend-15",
+                        source_tool="get_market_trend",
+                        chart_type="line",
+                        title="Évolution du prix médian",
+                        x_axis_title="Année",
+                        y_axis_title="Prix médian (€/m²)",
+                        labels=["2024", "2025"],
+                        values=[9_700, 9_500],
+                    )
+                ],
+                citations=[],
+                model="test-agent",
+                conversation_memory_used=True,
+                orchestration_rounds=2,
+            )
+
+    app.dependency_overrides[get_agent_service] = lambda: FakeAgentService()
+    response = client.post(
+        "/api/v1/agent/chat",
+        json={
+            "message": "  Et dans le 15e ?  ",
+            "history": [
+                {
+                    "role": "assistant",
+                    "content": "Le 13e coûte environ 10 000 €/m².",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["route"] == "market"
+    assert payload["tool_executions"] == [
+        {"name": "get_market_overview", "success": True}
+    ]
+    assert payload["visualizations"][0]["source_tool"] == "get_market_trend"
+    assert payload["visualizations"][0]["values"] == [9700.0, 9500.0]
+    assert payload["conversation_memory_used"] is True
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"message": "   ", "history": []},
+        {"message": "Question", "history": [{"role": "system", "content": "x"}]},
+        {
+            "message": "Question",
+            "history": [
+                {"role": "user", "content": f"message {index}"}
+                for index in range(13)
+            ],
+        },
+    ],
+)
+def test_agent_request_validation(client: TestClient, payload: dict[str, object]):
+    response = client.post("/api/v1/agent/chat", json=payload)
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "request_validation_error"
+
+
+def test_agent_failure_does_not_leak_provider_details(client: TestClient):
+    class FailingAgentService:
+        def answer(self, _question: str, *, history: list[ConversationMessage]):
+            del history
+            raise AgentOrchestrationError("private model or database detail")
+
+    app.dependency_overrides[get_agent_service] = lambda: FailingAgentService()
+    response = client.post(
+        "/api/v1/agent/chat",
+        json={"message": "Compare le 13e et le 20e", "history": []},
+    )
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "ai_service_unavailable"
+    assert "private model" not in response.text

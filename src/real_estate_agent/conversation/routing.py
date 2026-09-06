@@ -77,9 +77,9 @@ def local_conversation_reply(message: str) -> str | None:
         return "Au revoir 👋 À bientôt pour une nouvelle analyse immobilière."
     if normalized in _CAPABILITY_QUESTIONS:
         return (
-            "Je suis l’Analyste IA immobilier. Aujourd’hui, je réponds avec des "
-            "sources officielles sur le DPE, la réglementation énergétique, les "
-            "audits et la méthodologie DVF. La prochaine version pourra aussi "
-            "interroger les prix, comparer les arrondissements et générer des graphiques."
+            "Je suis l’Analyste IA immobilier de Paris. Je peux analyser les prix, "
+            "les volumes, les tendances et les arrondissements avec les données "
+            "PostgreSQL, étudier les statistiques DPE et répondre aux questions "
+            "réglementaires à partir de sources officielles."
         )
     return None
