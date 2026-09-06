@@ -52,7 +52,14 @@ class RealEstateApiClient:
         ai_timeout_seconds: float | None = None,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
-        configured_url = base_url or os.getenv("API_BASE_URL", DEFAULT_API_BASE_URL)
+        configured_url = base_url or os.getenv("API_BASE_URL")
+        if not configured_url:
+            internal_hostport = os.getenv("API_HOSTPORT")
+            configured_url = (
+                f"http://{internal_hostport}"
+                if internal_hostport
+                else DEFAULT_API_BASE_URL
+            )
         if not configured_url.startswith(("http://", "https://")):
             raise ValueError("API_BASE_URL must start with http:// or https://")
 

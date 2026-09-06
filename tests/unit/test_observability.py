@@ -123,3 +123,26 @@ def test_logging_configuration_is_idempotent():
         root_logger.handlers.clear()
         root_logger.handlers.extend(original_handlers)
         root_logger.setLevel(original_level)
+
+
+def test_logging_configuration_reenables_application_child_loggers():
+    child_logger = logging.getLogger("real_estate_agent.agent.service")
+    original_disabled = child_logger.disabled
+    root_logger = logging.getLogger()
+    original_handlers = list(root_logger.handlers)
+    original_level = root_logger.level
+    settings = ObservabilitySettings(
+        SERVICE_NAME="test-api",
+        LOG_LEVEL="INFO",
+        LOG_FORMAT="json",
+        _env_file=None,
+    )
+    try:
+        child_logger.disabled = True
+        configure_logging(settings)
+        assert child_logger.disabled is False
+    finally:
+        child_logger.disabled = original_disabled
+        root_logger.handlers.clear()
+        root_logger.handlers.extend(original_handlers)
+        root_logger.setLevel(original_level)

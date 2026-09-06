@@ -104,6 +104,36 @@ def test_paris_can_fill_the_location_requested_by_the_previous_turn():
     )
 
 
+@pytest.mark.parametrize(
+    "instruction",
+    [
+        "In English answer please",
+        "Répondez en anglais, s'il vous plaît",
+        "Répondez en angmais please",
+        "Answer briefly in French",
+    ],
+)
+def test_language_and_style_instructions_continue_the_real_estate_turn(
+    instruction: str,
+):
+    assert (
+        local_conversation_reply(
+            instruction,
+            history=["What is DPE?"],
+        )
+        is None
+    )
+
+
+def test_language_instruction_without_real_estate_history_stays_in_scope():
+    answer = local_conversation_reply(
+        "In English answer please",
+        history=["Quelle est la capitale des États-Unis ?"],
+    )
+    assert answer is not None
+    assert "immobilière" in answer
+
+
 def test_paris_without_conversation_context_receives_a_useful_clarification():
     answer = local_conversation_reply("Paris")
     assert answer is not None

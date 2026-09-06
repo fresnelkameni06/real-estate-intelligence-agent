@@ -5,6 +5,8 @@ from __future__ import annotations
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from real_estate_agent.secret_files import require_secret
+
 DATABASE_VECTOR_DIMENSIONS = 1536
 
 
@@ -18,6 +20,10 @@ class EmbeddingSettings(BaseSettings):
     )
 
     openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_api_key_file: str | None = Field(
+        default=None,
+        alias="OPENAI_API_KEY_FILE",
+    )
     model: str = Field(default="text-embedding-3-small", alias="OPENAI_EMBEDDING_MODEL")
     dimensions: int = Field(default=1536, alias="OPENAI_EMBEDDING_DIMENSIONS", ge=1)
     batch_size: int = Field(default=64, alias="OPENAI_EMBEDDING_BATCH_SIZE", ge=1, le=256)
@@ -47,13 +53,13 @@ class EmbeddingSettings(BaseSettings):
 
     def require_api_key(self) -> str:
         """Return the secret value or fail without logging/revealing it."""
-        if self.openai_api_key is None:
-            raise RuntimeError(
-                "OPENAI_API_KEY is not set. Add it only to the local .env file."
-            )
-        value = self.openai_api_key.get_secret_value().strip()
-        if not value:
-            raise RuntimeError(
-                "OPENAI_API_KEY is empty. Add it only to the local .env file."
-            )
-        return value
+        direct_value = (
+            self.openai_api_key.get_secret_value()
+            if self.openai_api_key is not None
+            else None
+        )
+        return require_secret(
+            direct_value,
+            self.openai_api_key_file,
+            variable_name="OPENAI_API_KEY",
+        )

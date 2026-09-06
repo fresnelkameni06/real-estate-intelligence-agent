@@ -6,10 +6,16 @@ test-database safety guard.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
-from real_estate_agent.database.config import DatabaseSettings, safe_url_summary
+from real_estate_agent.database.config import (
+    DatabaseSettings,
+    normalize_database_url,
+    safe_url_summary,
+)
 from real_estate_agent.database.mapping import (
     parse_geopoint,
     prepare_dpe_frame,
@@ -19,6 +25,8 @@ from real_estate_agent.database.test_safety import (
     UnsafeTestDatabaseError,
     resolve_safe_test_url,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # --------------------------------------------------------------------------- #
 # Settings
@@ -36,6 +44,24 @@ def test_safe_url_summary_hides_credentials():
     assert "secret" not in summary
     assert "user" not in summary
     assert "localhost:5432/real_estate" in summary
+
+
+@pytest.mark.parametrize("scheme", ["postgres://", "postgresql://"])
+def test_cloud_database_urls_use_psycopg_3(scheme: str):
+    url = f"{scheme}user:secret@database.internal:5432/real_estate"
+    assert normalize_database_url(url).startswith("postgresql+psycopg://")
+
+
+def test_explicit_database_driver_is_preserved():
+    url = "postgresql+psycopg://user:secret@localhost:5432/real_estate"
+    assert normalize_database_url(url) == url
+
+
+def test_alembic_does_not_disable_existing_application_loggers():
+    migration_environment = (REPO_ROOT / "database/migrations/env.py").read_text(
+        encoding="utf-8"
+    )
+    assert "disable_existing_loggers=False" in migration_environment
 
 
 # --------------------------------------------------------------------------- #

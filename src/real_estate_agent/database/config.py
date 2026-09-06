@@ -56,6 +56,15 @@ def safe_url_summary(url: str) -> str:
     return tail
 
 
+def normalize_database_url(url: str) -> str:
+    """Select psycopg 3 when a cloud provider returns a generic Postgres URL."""
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url.removeprefix("postgres://")
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url.removeprefix("postgresql://")
+    return url
+
+
 def load_settings() -> DatabaseSettings:
     """Load database settings from the environment / .env."""
     return DatabaseSettings()

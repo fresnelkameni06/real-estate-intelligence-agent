@@ -18,7 +18,10 @@ from real_estate_agent.database.models import SCHEMA, Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Alembic runs in the same Python process as some integration tests.  The
+    # default ``disable_existing_loggers=True`` would silently disable loggers
+    # that the application created before the migration started.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

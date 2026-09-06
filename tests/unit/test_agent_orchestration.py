@@ -63,13 +63,16 @@ def _capture_agent_logs() -> Iterator[list[logging.LogRecord]]:
     agent_logger = logging.getLogger("real_estate_agent.agent.service")
     collector = _RecordCollector()
     previous_level = agent_logger.level
+    previous_disabled = agent_logger.disabled
     agent_logger.addHandler(collector)
     agent_logger.setLevel(logging.INFO)
+    agent_logger.disabled = False
     try:
         yield collector.records
     finally:
         agent_logger.removeHandler(collector)
         agent_logger.setLevel(previous_level)
+        agent_logger.disabled = previous_disabled
 
 
 def _serialized_log_values(records: Sequence[logging.LogRecord]) -> str:

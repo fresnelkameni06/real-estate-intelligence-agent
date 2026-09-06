@@ -38,6 +38,7 @@ _SECRET_PATTERNS = (
 )
 _MAX_LOG_STRING_LENGTH = 500
 _HANDLER_MARKER = "_real_estate_observability_handler"
+_APPLICATION_LOGGER_PREFIXES = ("app", "real_estate_agent")
 
 
 def _redact(value: str) -> str:
@@ -143,6 +144,25 @@ def configure_logging(settings: ObservabilitySettings | None = None) -> None:
             root_logger.removeHandler(existing_handler)
     root_logger.addHandler(handler)
     root_logger.setLevel(settings.log_level)
+
+    # A host process or a migration library may have disabled application
+    # loggers before this function runs.  Re-enable our complete logger tree;
+    # setting only the parent is insufficient when a child has disabled=True.
+    logger_registry = logging.root.manager.loggerDict
+    application_loggers = [
+        logging.getLogger(prefix) for prefix in _APPLICATION_LOGGER_PREFIXES
+    ]
+    application_loggers.extend(
+        logger
+        for name, logger in logger_registry.items()
+        if isinstance(logger, logging.Logger)
+        and any(
+            name.startswith(f"{prefix}.")
+            for prefix in _APPLICATION_LOGGER_PREFIXES
+        )
+    )
+    for application_logger in application_loggers:
+        application_logger.disabled = False
 
     for noisy_logger in (
         "httpcore",

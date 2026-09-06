@@ -198,6 +198,25 @@ _FOLLOWUP_PREFIXES = (
     "allez y",
 )
 
+_RESPONSE_INSTRUCTION_MARKERS = (
+    "answer",
+    "brief",
+    "court",
+    "detail",
+    "explain",
+    "please",
+    "repond",
+    "reply",
+    "resume",
+    "tradui",
+)
+_RESPONSE_LANGUAGE_MARKERS = (
+    "anglais",
+    "english",
+    "francais",
+    "french",
+)
+
 _PARIS_CLARIFICATION_PATTERNS = (
     r"(?:a )?paris",
     r"(?:la )?ville (?:c est|est) paris",
@@ -250,6 +269,23 @@ def _is_contextual_followup(message: str) -> bool:
     ) or bool(
         re.search(r"\b(?:[1-9]|1[0-9]|20)(?:e|eme|er)\b", normalized)
     )
+
+
+def _is_response_instruction(message: str) -> bool:
+    """Recognize short requests that change language, length or answer style."""
+    normalized = _normalize(message)
+    if len(normalized.split()) > 12:
+        return False
+    tokens = normalized.split()
+    has_language = any(
+        SequenceMatcher(None, token, language).ratio() >= 0.8
+        for token in tokens
+        for language in _RESPONSE_LANGUAGE_MARKERS
+    )
+    has_instruction = any(
+        marker in normalized for marker in _RESPONSE_INSTRUCTION_MARKERS
+    )
+    return has_language and has_instruction
 
 
 def local_conversation_reply(
@@ -313,6 +349,12 @@ def local_conversation_reply(
             _contains_real_estate_context(history[-1])
             or _is_paris_clarification(history[-1])
         )
+    ):
+        return None
+    if (
+        _is_response_instruction(message)
+        and history
+        and _contains_real_estate_context(history[-1])
     ):
         return None
     if _is_paris_clarification(message):

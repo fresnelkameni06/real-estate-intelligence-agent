@@ -147,6 +147,16 @@ def test_client_rejects_invalid_configuration():
         RealEstateApiClient(base_url="http://test", ai_timeout_seconds=0)
 
 
+def test_client_builds_private_api_url_from_hostport(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("API_BASE_URL", raising=False)
+    monkeypatch.setenv("API_HOSTPORT", "real-estate-api:10000")
+    client = RealEstateApiClient()
+    try:
+        assert client.base_url == "http://real-estate-api:10000"
+    finally:
+        client.close()
+
+
 def test_dashboard_formatters():
     assert format_integer(160977) == "160 977"
     assert format_euro_per_m2(10348.84) == "10 349 €/m²"

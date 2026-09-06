@@ -5,6 +5,8 @@ from __future__ import annotations
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from real_estate_agent.secret_files import require_secret
+
 
 class AgentSettings(BaseSettings):
     """OpenAI model and local orchestration limits without secret exposure."""
@@ -16,6 +18,10 @@ class AgentSettings(BaseSettings):
     )
 
     openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_api_key_file: str | None = Field(
+        default=None,
+        alias="OPENAI_API_KEY_FILE",
+    )
     model: str = Field(default="gpt-5.6-luna", alias="OPENAI_AGENT_MODEL")
     max_output_tokens: int = Field(
         default=1600,
@@ -52,13 +58,13 @@ class AgentSettings(BaseSettings):
 
     def require_api_key(self) -> str:
         """Return the configured secret locally without logging it."""
-        if self.openai_api_key is None:
-            raise RuntimeError(
-                "OPENAI_API_KEY is not set. Add it only to the local .env file."
-            )
-        value = self.openai_api_key.get_secret_value().strip()
-        if not value:
-            raise RuntimeError(
-                "OPENAI_API_KEY is empty. Add it only to the local .env file."
-            )
-        return value
+        direct_value = (
+            self.openai_api_key.get_secret_value()
+            if self.openai_api_key is not None
+            else None
+        )
+        return require_secret(
+            direct_value,
+            self.openai_api_key_file,
+            variable_name="OPENAI_API_KEY",
+        )

@@ -1,0 +1,132 @@
+﻿name: paris-real-estate-intelligence
+
+x-application-environment: &application-environment
+  DATABASE_URL: postgresql+psycopg://real_estate_app:${POSTGRES_PASSWORD:-local_dev_only}@postgres:5432/real_estate_db
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: ${LOG_FORMAT:-json}
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg18
+    environment:
+      POSTGRES_DB: real_estate_db
+      POSTGRES_USER: real_estate_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_only}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U real_estate_app -d real_estate_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment: *application-environment
+    command: python -m alembic upgrade head
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      <<: *application-environment
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      SERVICE_NAME: real-estate-intelligence-api
+    secrets:
+      - openai_api_key
+    command: >-
+      python -m uvicorn --app-dir . app.api.main:app
+      --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      API_BASE_URL: http://api:8000
+      API_TIMEOUT_SECONDS: ${API_TIMEOUT_SECONDS:-15}
+      AI_API_TIMEOUT_SECONDS: ${AI_API_TIMEOUT_SECONDS:-180}
+    command: >-
+      python -m streamlit run app/streamlit/app.py
+      --server.address=0.0.0.0 --server.port=8501
+      --server.headless=true --browser.gatherUsageStats=false
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  data-loader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment: *application-environment
+    command: python scripts/load_postgres.py --dataset all
+    volumes:
+      - ./data:/workspace/data:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    profiles: ["tools"]
+
+  rag-indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      <<: *application-environment
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+    secrets:
+      - openai_api_key
+    command: python scripts/embed_rag_chunks.py
+    volumes:
+      - ./data:/workspace/data:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    profiles: ["tools"]
+
+volumes:
+  postgres_data:
+
+secrets:
+  openai_api_key:
+    environment: OPENAI_API_KEY
+
