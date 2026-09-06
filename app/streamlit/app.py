@@ -442,7 +442,7 @@ def render_agent_chat(client: RealEstateApiClient) -> None:
                     st.write("Sélection des outils utiles…")
                     payload = client.ask_agent(question, messages[:-1])
                     route_labels = {
-                        "conversation": "Réponse conversationnelle",
+                        "conversation": "Réponse prête",
                         "market": "Analyse du marché terminée",
                         "dpe": "Analyse énergétique terminée",
                         "documentary": "Réponse vérifiée dans les sources",

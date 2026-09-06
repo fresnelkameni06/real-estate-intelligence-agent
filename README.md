@@ -7,7 +7,8 @@ official regulatory documents.
 
 ## Current status
 
-**Phase 9.2 — Agent scope and security guardrails.** The project currently provides:
+**Phase 10.1 — Structured logging and request observability.** The project currently
+provides:
 
 - validated DVF and DPE ingestion/processing pipelines;
 - a PostgreSQL schema, migrations and idempotent loaders;
@@ -25,7 +26,8 @@ official regulatory documents.
 - short multi-turn session memory and an active Agent interface;
 - deterministic in-chat charts for trends, comparisons and DPE distributions;
 - deterministic scope, real-time limitation and prompt-injection guardrails;
-- a versioned 23-case Agent evaluation suite with structural quality metrics.
+- a versioned 23-case Agent evaluation suite with structural quality metrics;
+- safe JSON logs, request correlation and bounded Agent/tool telemetry.
 
 ## High-level capabilities
 
@@ -94,6 +96,9 @@ AGENT_MAX_HISTORY_MESSAGES=12
 RAG_RETRIEVAL_TOP_K=5
 RAG_MINIMUM_SIMILARITY=0.42
 RAG_CONTEXT_MAX_CHARACTERS=12000
+SERVICE_NAME=real-estate-intelligence-api
+LOG_LEVEL=INFO
+LOG_FORMAT=json
 ```
 
 Percent-encode special password characters in database URLs. Never commit
@@ -290,6 +295,20 @@ machine-readable result is needed. The command returns a failing exit code when
 the pass rate is below 80%; change that controlled threshold with `--fail-below`.
 The `scope` and `security` categories run entirely through the local guardrail and
 therefore make no PostgreSQL or OpenAI request.
+
+## Observability and safe logs
+
+FastAPI emits one structured event per request and returns the correlation value
+in the `X-Request-ID` response header. A valid caller-supplied identifier is
+propagated; otherwise the API generates one. Query strings, request bodies,
+conversation messages, tool arguments and tool results are not logged.
+
+Agent logs expose only operational metadata such as route, model, orchestration
+round, approved tool name, success state and duration. The formatter uses an
+explicit field allow-list, redacts common secret patterns and records exception
+types without exposing exception messages or stack traces. Use `LOG_FORMAT=text`
+for more readable local output; keep `LOG_FORMAT=json` for containers and hosted
+environments.
 
 ## Notes
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Sequence
+from difflib import SequenceMatcher
 
 
 def _normalize(message: str) -> str:
@@ -152,8 +153,12 @@ _SECURITY_PATTERNS = (
 )
 _CURRENT_TIME_PATTERNS = (
     r"quel(?:le)? heure",
+    r"heure (?:a|de|en) paris",
+    r"heure paris",
     r"heure est il",
     r"heure actuelle",
+    r"heure maintenant",
+    r"il est quelle heure",
     r"quel jour sommes nous",
     r"quelle date sommes nous",
     r"sommes nous en ete",
@@ -184,12 +189,21 @@ _FOLLOWUP_PREFIXES = (
     "detaille",
     "et ",
     "explique",
+    "mais",
     "non",
     "oui",
     "pourquoi",
     "precise",
     "vas y",
     "allez y",
+)
+
+_PARIS_CLARIFICATION_PATTERNS = (
+    r"(?:a )?paris",
+    r"(?:la )?ville (?:c est|est) paris",
+    r"ville paris",
+    r"(?:c est|ce sera|je choisis|je veux) paris",
+    r"paris (?:entier|intra muros)",
 )
 
 _OUT_OF_SCOPE_REPLY = (
@@ -209,11 +223,31 @@ def _contains_real_estate_context(message: str) -> bool:
     return bool(re.search(r"\b(?:[1-9]|1[0-9]|20)(?:e|eme|er)\b", normalized))
 
 
+def _is_paris_clarification(message: str) -> bool:
+    normalized = _normalize(message)
+    return any(
+        re.fullmatch(pattern, normalized)
+        for pattern in _PARIS_CLARIFICATION_PATTERNS
+    )
+
+
+def _is_short_social_typo(normalized: str, candidates: set[str]) -> bool:
+    if len(normalized.split()) != 1 or len(normalized) < 4:
+        return False
+    return any(
+        " " not in candidate
+        and SequenceMatcher(None, normalized, candidate).ratio() >= 0.82
+        for candidate in candidates
+    )
+
+
 def _is_contextual_followup(message: str) -> bool:
     normalized = _normalize(message)
     if len(normalized.split()) > 12:
         return False
-    return normalized.startswith(_FOLLOWUP_PREFIXES) or bool(
+    return _is_paris_clarification(message) or normalized.startswith(
+        _FOLLOWUP_PREFIXES
+    ) or bool(
         re.search(r"\b(?:[1-9]|1[0-9]|20)(?:e|eme|er)\b", normalized)
     )
 
@@ -248,7 +282,11 @@ def local_conversation_reply(
             "Je n’ai accès ni à votre position, ni à votre GPS, ni à votre adresse. "
             "Je peux uniquement vous accompagner sur l’immobilier résidentiel parisien."
         )
-    if normalized in _GREETINGS or normalized in {"ca va", "comment allez vous"}:
+    if (
+        normalized in _GREETINGS
+        or normalized in {"ca va", "comment allez vous"}
+        or _is_short_social_typo(normalized, _GREETINGS)
+    ):
         return (
             "Bonjour 👋 Je vais bien, merci ! Je peux répondre à vos questions "
             "sur le DPE, la réglementation énergétique, les audits et les données DVF."
@@ -271,7 +309,15 @@ def local_conversation_reply(
     if (
         _is_contextual_followup(message)
         and history
-        and _contains_real_estate_context(history[-1])
+        and (
+            _contains_real_estate_context(history[-1])
+            or _is_paris_clarification(history[-1])
+        )
     ):
         return None
+    if _is_paris_clarification(message):
+        return (
+            "Vous avez indiqué Paris. Que souhaitez-vous analyser : le marché "
+            "global, un arrondissement, les prix, les transactions ou le DPE ?"
+        )
     return _OUT_OF_SCOPE_REPLY

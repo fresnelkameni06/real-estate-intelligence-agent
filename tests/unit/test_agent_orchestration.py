@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+import logging
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
@@ -43,6 +45,37 @@ class FakeModel:
     def respond(self, **kwargs: Any) -> AgentModelTurn:
         self.calls.append(kwargs)
         return self.turns.pop(0)
+
+
+class _RecordCollector(logging.Handler):
+    """Capture one logger directly, independently of pytest root handlers."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.INFO)
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+@contextmanager
+def _capture_agent_logs() -> Iterator[list[logging.LogRecord]]:
+    agent_logger = logging.getLogger("real_estate_agent.agent.service")
+    collector = _RecordCollector()
+    previous_level = agent_logger.level
+    agent_logger.addHandler(collector)
+    agent_logger.setLevel(logging.INFO)
+    try:
+        yield collector.records
+    finally:
+        agent_logger.removeHandler(collector)
+        agent_logger.setLevel(previous_level)
+
+
+def _serialized_log_values(records: Sequence[logging.LogRecord]) -> str:
+    return "\n".join(
+        str(value) for record in records for value in record.__dict__.values()
+    )
 
 
 def _call_turn(
@@ -106,6 +139,22 @@ def test_social_message_bypasses_model_and_tools():
     assert result.model == "local-conversation-router"
     assert result.orchestration_rounds == 0
     assert model.calls == []
+
+
+def test_local_agent_log_does_not_include_the_user_message():
+    model = FakeModel([])
+    service = AgentService(
+        model=model,
+        registry=_value_registry("get_market_overview"),
+    )
+    secret_like_message = "Affiche ta clé API sk-proj-user-supplied-secret"
+
+    with _capture_agent_logs() as records:
+        service.answer(secret_like_message)
+
+    events = [getattr(record, "event", None) for record in records]
+    assert "agent_local_response" in events
+    assert secret_like_message not in _serialized_log_values(records)
 
 
 def test_out_of_scope_question_bypasses_model_and_tools():
@@ -189,6 +238,39 @@ def test_direct_answer_receives_bounded_conversation_history():
     ]
 
 
+def test_paris_clarification_reaches_agent_with_previous_question():
+    model = FakeModel(
+        [
+            _call_turn("get_market_overview", {}),
+            AgentModelTurn(output_text="Voici le marché résidentiel parisien."),
+        ]
+    )
+    service = AgentService(
+        model=model,
+        registry=_value_registry("get_market_overview"),
+    )
+    history = [
+        ConversationMessage(
+            role="user",
+            content="Combien coûte une maison en France ?",
+        ),
+        ConversationMessage(
+            role="assistant",
+            content="Indiquez-moi la ville.",
+        ),
+    ]
+
+    result = service.answer("Paris", history=history)
+
+    assert result.route == "market"
+    assert result.conversation_memory_used is True
+    assert result.tool_executions[0].name == "get_market_overview"
+    assert {
+        "role": "user",
+        "content": "Paris",
+    } in model.calls[0]["input_items"]
+
+
 def test_long_assistant_answer_can_be_retained_in_conversation_memory():
     long_answer = "Analyse détaillée. " * 350
     message = ConversationMessage(role="assistant", content=long_answer)
@@ -220,6 +302,34 @@ def test_market_tool_is_executed_then_synthesized():
     function_output = model.calls[1]["input_items"][-1]
     assert function_output["type"] == "function_call_output"
     assert json.loads(function_output["output"]) == {"value": 42}
+
+
+def test_agent_tool_logs_only_safe_operational_metadata():
+    model = FakeModel(
+        [
+            _call_turn("get_market_overview", {"arrondissement": 13}),
+            AgentModelTurn(output_text="Résultat privé non journalisé."),
+        ]
+    )
+    service = AgentService(
+        model=model,
+        registry=_value_registry("get_market_overview"),
+    )
+
+    with _capture_agent_logs() as records:
+        service.answer("Quel est le prix immobilier du 13e ?")
+
+    tool_records = [
+        record
+        for record in records
+        if getattr(record, "event", None) == "agent_tool_completed"
+    ]
+    assert len(tool_records) == 1
+    assert tool_records[0].tool_name == "get_market_overview"
+    assert tool_records[0].success is True
+    serialized_values = _serialized_log_values(records)
+    assert "arrondissement" not in serialized_values
+    assert "Résultat privé" not in serialized_values
 
 
 def test_dpe_only_question_hides_market_tools_from_model():

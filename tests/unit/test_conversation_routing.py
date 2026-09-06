@@ -7,6 +7,7 @@ from real_estate_agent.conversation import local_conversation_reply
 
 def test_common_social_messages_receive_friendly_replies():
     assert "Bonjour" in local_conversation_reply("bonjour")
+    assert "Bonjour" in local_conversation_reply("Bonjoiur")
     assert "plaisir" in local_conversation_reply("Merci beaucoup !")
     assert "prêt" in local_conversation_reply("C'est OK.")
     assert "Au revoir" in local_conversation_reply("Au revoir")
@@ -34,6 +35,8 @@ def test_documentary_question_is_left_to_rag():
     ("question", "expected_fragment"),
     [
         ("Quelle heure est-il à Paris ?", "horloge en temps réel"),
+        ("heure de paris", "horloge en temps réel"),
+        ("Il est quelle heure ?", "horloge en temps réel"),
         ("Actuellement sommes-nous en été ou en hiver ?", "saison actuelle"),
         ("Demain va-t-il pleuvoir à Paris ?", "Météo-France"),
         ("Dans quelle ville suis-je actuellement ?", "votre position"),
@@ -75,6 +78,36 @@ def test_real_estate_questions_and_contextual_followups_reach_the_agent():
         is None
     )
     assert local_conversation_reply("Et pourquoi ?") is not None
+
+
+def test_paris_can_fill_the_location_requested_by_the_previous_turn():
+    assert (
+        local_conversation_reply(
+            "Paris",
+            history=["Combien coûte une maison en France ?"],
+        )
+        is None
+    )
+    assert (
+        local_conversation_reply(
+            "la ville c'est Paris",
+            history=["Paris"],
+        )
+        is None
+    )
+    assert (
+        local_conversation_reply(
+            "mais vous avez dit de vous donner une indication",
+            history=["la ville c'est Paris"],
+        )
+        is None
+    )
+
+
+def test_paris_without_conversation_context_receives_a_useful_clarification():
+    answer = local_conversation_reply("Paris")
+    assert answer is not None
+    assert "Que souhaitez-vous analyser" in answer
 
 
 def test_only_the_most_recent_user_topic_can_enable_a_contextual_followup():

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -14,15 +15,26 @@ from app.api.dependencies import (
 )
 from app.api.errors import register_exception_handlers
 from app.api.routes import agent, analytics, health, rag
+from real_estate_agent.observability import (
+    RequestObservabilityMiddleware,
+    configure_logging,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Release shared application resources on shutdown."""
-    yield
-    dispose_agent_service()
-    dispose_rag_answer_service()
-    dispose_database_engine()
+    configure_logging()
+    logger.info("application_started", extra={"event": "application_started"})
+    try:
+        yield
+    finally:
+        dispose_agent_service()
+        dispose_rag_answer_service()
+        dispose_database_engine()
+        logger.info("application_stopped", extra={"event": "application_stopped"})
 
 
 app = FastAPI(
@@ -37,6 +49,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(RequestObservabilityMiddleware)
 register_exception_handlers(app)
 app.include_router(health.router)
 app.include_router(analytics.router, prefix="/api/v1")

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
+import time
 from collections.abc import Sequence
 from typing import Any
 
@@ -22,6 +24,8 @@ from real_estate_agent.agent.visualizations import build_tool_visualization
 from real_estate_agent.conversation import local_conversation_reply
 from real_estate_agent.rag.generation.models import AnswerCitation, RagAnswerResult
 from real_estate_agent.tools import ToolNotFoundError, ToolRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class AgentOrchestrationError(RuntimeError):
@@ -135,6 +139,7 @@ class AgentService:
         history: Sequence[ConversationMessage] = (),
     ) -> AgentAnswerResult:
         """Answer one turn and execute only model-selected allow-listed tools."""
+        agent_started = time.perf_counter()
         validated_question = self._validate_question(question)
         local_reply = local_conversation_reply(
             validated_question,
@@ -143,6 +148,19 @@ class AgentService:
             ],
         )
         if local_reply is not None:
+            logger.info(
+                "agent_local_response",
+                extra={
+                    "event": "agent_local_response",
+                    "route": "conversation",
+                    "model": "local-conversation-router",
+                    "memory_used": bool(history),
+                    "duration_ms": round(
+                        (time.perf_counter() - agent_started) * 1_000,
+                        2,
+                    ),
+                },
+            )
             return AgentAnswerResult(
                 question=validated_question,
                 answer=local_reply,
@@ -164,20 +182,66 @@ class AgentService:
         seen_calls: set[str] = set()
 
         for round_number in range(1, self._max_tool_rounds + 2):
-            turn = self._model.respond(
-                instructions=AGENT_SYSTEM_INSTRUCTIONS,
-                input_items=input_items,
-                tools=specifications,
-                max_output_tokens=self._max_output_tokens,
+            model_started = time.perf_counter()
+            try:
+                turn = self._model.respond(
+                    instructions=AGENT_SYSTEM_INSTRUCTIONS,
+                    input_items=input_items,
+                    tools=specifications,
+                    max_output_tokens=self._max_output_tokens,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "agent_model_turn_failed",
+                    extra={
+                        "event": "agent_model_turn_failed",
+                        "model": self._model.model,
+                        "orchestration_round": round_number,
+                        "duration_ms": round(
+                            (time.perf_counter() - model_started) * 1_000,
+                            2,
+                        ),
+                        "error_type": type(exc).__name__,
+                    },
+                )
+                raise
+            logger.info(
+                "agent_model_turn_completed",
+                extra={
+                    "event": "agent_model_turn_completed",
+                    "model": self._model.model,
+                    "orchestration_round": round_number,
+                    "tool_call_count": len(turn.tool_calls),
+                    "duration_ms": round(
+                        (time.perf_counter() - model_started) * 1_000,
+                        2,
+                    ),
+                },
             )
             if not turn.tool_calls:
                 answer = turn.output_text.strip()
                 if not answer:
                     raise AgentOrchestrationError("The agent returned an empty answer.")
+                route = _route_for(used_tools)
+                logger.info(
+                    "agent_completed",
+                    extra={
+                        "event": "agent_completed",
+                        "route": route,
+                        "model": self._model.model,
+                        "orchestration_round": round_number,
+                        "tool_call_count": len(execution_summaries),
+                        "memory_used": bool(history),
+                        "duration_ms": round(
+                            (time.perf_counter() - agent_started) * 1_000,
+                            2,
+                        ),
+                    },
+                )
                 return AgentAnswerResult(
                     question=validated_question,
                     answer=answer,
-                    route=_route_for(used_tools),
+                    route=route,
                     tool_executions=execution_summaries,
                     visualizations=visualizations,
                     citations=_referenced_citations(answer, collected_citations),
@@ -202,6 +266,16 @@ class AgentService:
                     separators=(",", ":"),
                 )
                 if call_signature in seen_calls:
+                    logger.warning(
+                        "agent_tool_rejected",
+                        extra={
+                            "event": "agent_tool_rejected",
+                            "tool_name": call.name,
+                            "orchestration_round": round_number,
+                            "success": False,
+                            "error_type": "DuplicateToolRequest",
+                        },
+                    )
                     input_items.append(
                         self._safe_tool_error(call.call_id, "duplicate_tool_request")
                     )
@@ -210,6 +284,7 @@ class AgentService:
                     )
                     continue
                 seen_calls.add(call_signature)
+                tool_started = time.perf_counter()
                 try:
                     result = self._registry.execute(call.name, call.arguments)
                     result_json = result.model_dump(mode="json")
@@ -232,14 +307,55 @@ class AgentService:
                     visualization = build_tool_visualization(call.name, result)
                     if visualization is not None:
                         visualizations.append(visualization)
-                except (ValidationError, ToolNotFoundError):
+                    logger.info(
+                        "agent_tool_completed",
+                        extra={
+                            "event": "agent_tool_completed",
+                            "tool_name": call.name,
+                            "orchestration_round": round_number,
+                            "success": True,
+                            "duration_ms": round(
+                                (time.perf_counter() - tool_started) * 1_000,
+                                2,
+                            ),
+                        },
+                    )
+                except (ValidationError, ToolNotFoundError) as exc:
+                    logger.warning(
+                        "agent_tool_failed",
+                        extra={
+                            "event": "agent_tool_failed",
+                            "tool_name": call.name,
+                            "orchestration_round": round_number,
+                            "success": False,
+                            "duration_ms": round(
+                                (time.perf_counter() - tool_started) * 1_000,
+                                2,
+                            ),
+                            "error_type": type(exc).__name__,
+                        },
+                    )
                     input_items.append(
                         self._safe_tool_error(call.call_id, "invalid_tool_request")
                     )
                     execution_summaries.append(
                         ToolExecutionSummary(name=call.name, success=False)
                     )
-                except Exception:
+                except Exception as exc:
+                    logger.warning(
+                        "agent_tool_failed",
+                        extra={
+                            "event": "agent_tool_failed",
+                            "tool_name": call.name,
+                            "orchestration_round": round_number,
+                            "success": False,
+                            "duration_ms": round(
+                                (time.perf_counter() - tool_started) * 1_000,
+                                2,
+                            ),
+                            "error_type": type(exc).__name__,
+                        },
+                    )
                     input_items.append(
                         self._safe_tool_error(call.call_id, "tool_execution_failed")
                     )

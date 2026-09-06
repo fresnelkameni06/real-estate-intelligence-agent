@@ -74,6 +74,23 @@ def test_health_is_database_independent(client: TestClient):
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    assert len(response.headers["x-request-id"]) == 32
+
+
+def test_valid_request_id_is_echoed(client: TestClient):
+    response = client.get(
+        "/health?private_query=must-not-be-logged",
+        headers={"X-Request-ID": "recruiter-demo-123"},
+    )
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] == "recruiter-demo-123"
+
+
+def test_invalid_request_id_is_replaced(client: TestClient):
+    response = client.get("/health", headers={"X-Request-ID": "short"})
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] != "short"
+    assert len(response.headers["x-request-id"]) == 32
 
 
 def test_openapi_documents_versioned_routes(client: TestClient):
