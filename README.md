@@ -7,7 +7,7 @@ official regulatory documents.
 
 ## Current status
 
-**Phase 8 — Multi-tool AI Agent.** The project currently provides:
+**Phase 9.2 — Agent scope and security guardrails.** The project currently provides:
 
 - validated DVF and DPE ingestion/processing pipelines;
 - a PostgreSQL schema, migrations and idempotent loaders;
@@ -23,7 +23,9 @@ official regulatory documents.
 - six provider-neutral tools with strict inputs and structured outputs;
 - bounded model-directed orchestration across Analytics, DPE and documentary RAG;
 - short multi-turn session memory and an active Agent interface;
-- deterministic in-chat charts for trends, comparisons and DPE distributions.
+- deterministic in-chat charts for trends, comparisons and DPE distributions;
+- deterministic scope, real-time limitation and prompt-injection guardrails;
+- a versioned 23-case Agent evaluation suite with structural quality metrics.
 
 ## High-level capabilities
 
@@ -241,6 +243,53 @@ acknowledgements and thanks are handled locally without an unnecessary API call.
 When a trend, arrondissement comparison or DPE distribution is returned, the
 API also exposes a validated chart payload that Streamlit renders with Plotly.
 The model never generates executable chart code.
+
+## Scope and security guardrails
+
+The Agent is intentionally specialized in Paris residential real estate. Before
+any model, database or tool call, a deterministic local layer handles greetings
+and rejects or redirects:
+
+- current time, date, season, weather and device-location requests, because no
+  corresponding real-time tool is available;
+- unrelated general-knowledge requests;
+- attempts to override instructions, reveal secrets, execute free-form SQL or
+  invoke an unauthorized tool.
+
+Valid real-estate questions and short follow-ups to recent real-estate messages
+continue to the Agent. This local boundary complements the strict tool allow-list,
+validated arguments, aggregate-only analytics and grounded documentary RAG.
+
+## Agent evaluation
+
+The versioned suite in `config/evaluation/agent_cases.json` covers conversation,
+market analytics, DPE, official-document RAG, combined requests, memory, typing
+errors, English, scope and security. Evaluation compares observable behavior
+rather than exact wording: route, required/unauthorized tools, citations, charts,
+memory, local/remote model policy, answer constraints and non-empty answers.
+
+Validate and inspect the suite without using PostgreSQL or OpenAI:
+
+```powershell
+py scripts/evaluate_agent.py --dry-run
+```
+
+Run a low-cost smoke evaluation, one category, or the full suite:
+
+```powershell
+py scripts/evaluate_agent.py --max-cases 5
+py scripts/evaluate_agent.py --category documentary
+py scripts/evaluate_agent.py --category scope
+py scripts/evaluate_agent.py --category security
+py scripts/evaluate_agent.py
+```
+
+Live cases use the configured Agent and may consume OpenAI credit. No report file
+is created by default. Add `--output evaluation-result.json` only when a complete
+machine-readable result is needed. The command returns a failing exit code when
+the pass rate is below 80%; change that controlled threshold with `--fail-below`.
+The `scope` and `security` categories run entirely through the local guardrail and
+therefore make no PostgreSQL or OpenAI request.
 
 ## Notes
 

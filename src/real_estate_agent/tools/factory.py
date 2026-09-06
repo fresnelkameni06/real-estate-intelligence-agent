@@ -83,8 +83,10 @@ def build_tool_registry(engine: Engine, rag_service: RagAnswerService) -> ToolRe
             ToolDefinition(
                 name="get_market_overview",
                 description=(
-                    "Return deterministic aggregate price, surface and transaction "
-                    "indicators for Paris or one arrondissement over a period."
+                    "Return one period-wide aggregate market overview for Paris or "
+                    "one arrondissement: median price, transaction volume and median "
+                    "surface. Use this for a single summary value over a date range, "
+                    "not for year-by-year evolution."
                 ),
                 input_model=MarketScopeInput,
                 handler=market_overview,
@@ -93,7 +95,9 @@ def build_tool_registry(engine: Engine, rag_service: RagAnswerService) -> ToolRe
                 name="get_market_trend",
                 description=(
                     "Return annual median price per square metre and year-over-year "
-                    "changes for Paris or one arrondissement."
+                    "changes for Paris or one arrondissement. Use only when the user "
+                    "asks for evolution, variation, a trend or year-by-year values; "
+                    "not for one aggregate median over the whole period."
                 ),
                 input_model=MarketScopeInput,
                 handler=market_trend,
@@ -120,7 +124,10 @@ def build_tool_registry(engine: Engine, rag_service: RagAnswerService) -> ToolRe
                 name="analyze_dpe",
                 description=(
                     "Return aggregate DPE label distribution, energy consumption and "
-                    "emissions for Paris or one arrondissement."
+                    "emissions for Paris or one arrondissement. Use this tool alone "
+                    "for DPE-only questions, even when an arrondissement and period "
+                    "are specified. Add a market tool only when the user explicitly "
+                    "asks for DVF prices, transactions or market evolution."
                 ),
                 input_model=DpeAnalysisInput,
                 handler=analyze_dpe,

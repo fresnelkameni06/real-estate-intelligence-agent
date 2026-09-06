@@ -128,6 +128,29 @@ def test_specs_expose_strict_pydantic_json_schemas():
     assert comparison.input_schema["properties"]["arrondissements"]["minItems"] == 2
 
 
+def test_market_tool_descriptions_distinguish_aggregate_from_trend():
+    specifications = {
+        specification.name: specification
+        for specification in _registry().specifications()
+    }
+    overview = specifications["get_market_overview"].description
+    trend = specifications["get_market_trend"].description
+    assert "single summary value" in overview
+    assert "not for year-by-year" in overview
+    assert "evolution" in trend
+    assert "not for one aggregate median" in trend
+
+
+def test_dpe_description_prevents_implicit_market_tool_calls():
+    specifications = {
+        specification.name: specification
+        for specification in _registry().specifications()
+    }
+    description = specifications["analyze_dpe"].description
+    assert "Use this tool alone" in description
+    assert "explicitly asks for DVF" in description
+
+
 def test_market_tool_validates_then_calls_existing_service(
     monkeypatch: pytest.MonkeyPatch,
 ):

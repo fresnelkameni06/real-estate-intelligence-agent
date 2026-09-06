@@ -17,6 +17,7 @@ from real_estate_agent.agent.models import (
 )
 from real_estate_agent.agent.prompts import AGENT_SYSTEM_INSTRUCTIONS
 from real_estate_agent.agent.provider import AgentModel
+from real_estate_agent.agent.tool_policy import filter_tool_specifications
 from real_estate_agent.agent.visualizations import build_tool_visualization
 from real_estate_agent.conversation import local_conversation_reply
 from real_estate_agent.rag.generation.models import AnswerCitation, RagAnswerResult
@@ -135,7 +136,12 @@ class AgentService:
     ) -> AgentAnswerResult:
         """Answer one turn and execute only model-selected allow-listed tools."""
         validated_question = self._validate_question(question)
-        local_reply = local_conversation_reply(validated_question)
+        local_reply = local_conversation_reply(
+            validated_question,
+            history=[
+                message.content for message in history if message.role == "user"
+            ],
+        )
         if local_reply is not None:
             return AgentAnswerResult(
                 question=validated_question,
@@ -147,7 +153,10 @@ class AgentService:
             )
 
         input_items = self._initial_input(validated_question, history)
-        specifications = self._registry.specifications()
+        specifications = filter_tool_specifications(
+            self._registry.specifications(),
+            validated_question,
+        )
         execution_summaries: list[ToolExecutionSummary] = []
         visualizations = []
         collected_citations: list[AnswerCitation] = []

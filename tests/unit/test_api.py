@@ -347,7 +347,7 @@ def test_rag_provider_failure_does_not_leak_details(client: TestClient):
     app.dependency_overrides[get_rag_answer_service] = lambda: FailingRagService()
     response = client.post(
         "/api/v1/rag/answer",
-        json={"question": "Question valide", "style": "auto"},
+        json={"question": "Quelle est la validité du DPE ?", "style": "auto"},
     )
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "ai_service_unavailable"
