@@ -29,23 +29,25 @@ DPE_COLORS = {
 # Pages that use the single global "Zone analysée" selector.
 GLOBAL_AREA_PAGES = {"Vue d’ensemble", "DPE", "Profil arrondissement"}
 
-# Future AI-analyst example questions (display only; no LLM is ever called).
-AI_EXAMPLE_QUESTIONS = [
-    "Compare le 13e et le 20e arrondissement.",
-    "Quels arrondissements offrent le meilleur compromis entre prix et DPE ?",
-    "Comment les prix ont-ils évolué depuis 2021 ?",
+# Questions supported by the current official-document RAG corpus.
+RAG_EXAMPLE_QUESTIONS = [
+    "Combien de temps un DPE est-il valable ?",
     "Quelles contraintes concernent un logement classé G ?",
-    "Analyse le profil d’investissement du 15e arrondissement.",
+    "Quand un audit énergétique est-il obligatoire lors d’une vente ?",
+    "À quoi servent les données DVF et quelles sont leurs limites ?",
 ]
 
-# Roadmap shown on the AI preview page (honest project status).
+RAG_PAGE = "✨ Analyste IA — RAG actif"
+RAG_CHAT_STATE_KEY = "rag_chat_messages"
+
+# Roadmap shown on the active assistant page (honest project status).
 AI_ROADMAP = [
     ("Data Engineering", True),
     ("PostgreSQL", True),
     ("Analytics Engine", True),
     ("FastAPI", True),
     ("Streamlit", True),
-    ("RAG", False),
+    ("RAG documentaire", True),
     ("AI Tools", False),
     ("AI Agent", False),
 ]
@@ -85,7 +87,7 @@ def run_request(call: Any, *args: Any) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# AI Analyst preview (no LLM, no external call — visual placeholder only)
+# Active documentary assistant (RAG through FastAPI; no direct LLM import)
 # --------------------------------------------------------------------------- #
 
 def _inject_ai_styles() -> None:
@@ -108,6 +110,7 @@ def _inject_ai_styles() -> None:
             border: 1px solid rgba(120, 200, 255, 0.25);
         }
         .ai-hero-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+        .ai-hero-compact { padding: 16px 20px; margin-bottom: 10px; }
         .ai-orb {
             width: 54px; height: 54px; border-radius: 50%;
             background: radial-gradient(circle at 30% 30%, #8fe3ff, #2c7be5 60%, #14306b);
@@ -115,12 +118,13 @@ def _inject_ai_styles() -> None:
             animation: ai-orb-pulse 2.8s ease-in-out infinite;
             flex: 0 0 auto;
         }
+        .ai-orb-compact { width: 42px; height: 42px; }
         .ai-hero-title { font-size: 1.35rem; font-weight: 700; margin: 0; }
         .ai-badge {
             display: inline-block; margin-left: 10px; padding: 2px 10px;
             font-size: 0.72rem; font-weight: 600; letter-spacing: .5px;
-            border-radius: 999px; background: rgba(255, 214, 102, 0.18);
-            color: #ffd666; border: 1px solid rgba(255, 214, 102, 0.5);
+            border-radius: 999px; background: rgba(90, 230, 160, 0.16);
+            color: #7ef0b5; border: 1px solid rgba(90, 230, 160, 0.5);
             vertical-align: middle;
         }
         .ai-hero-sub { margin: 4px 0 0 0; opacity: 0.9; font-size: 0.95rem; }
@@ -131,9 +135,16 @@ def _inject_ai_styles() -> None:
         }
         .ai-status-dot {
             display: inline-block; width: 10px; height: 10px; border-radius: 50%;
-            background: #ffd666; margin-right: 8px;
+            background: #58e59b; margin-right: 8px;
             animation: ai-orb-pulse 2s ease-in-out infinite;
         }
+        div[data-testid="stChatMessage"] {
+            border: 1px solid rgba(128, 145, 165, 0.18);
+            border-radius: 14px;
+            padding: 0.75rem 0.9rem;
+            margin-bottom: 0.65rem;
+        }
+        div[data-testid="stChatMessageContent"] p { line-height: 1.55; }
         @keyframes ai-hero-gradient {
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
@@ -158,13 +169,13 @@ def _inject_ai_styles() -> None:
 
 
 def render_ai_hero() -> None:
-    """Render the animated AI Analyst hero card below the title/description."""
+    """Render the animated active-RAG hero below the title/description."""
     _inject_ai_styles()
 
     # Rotate the example question on each rerun (stable, no JS).
     idx = st.session_state.get("_ai_q_index", 0)
-    question = AI_EXAMPLE_QUESTIONS[idx % len(AI_EXAMPLE_QUESTIONS)]
-    st.session_state["_ai_q_index"] = (idx + 1) % len(AI_EXAMPLE_QUESTIONS)
+    question = RAG_EXAMPLE_QUESTIONS[idx % len(RAG_EXAMPLE_QUESTIONS)]
+    st.session_state["_ai_q_index"] = (idx + 1) % len(RAG_EXAMPLE_QUESTIONS)
 
     st.markdown(
         f"""
@@ -172,12 +183,12 @@ def render_ai_hero() -> None:
           <div class="ai-hero-row">
             <div class="ai-orb"></div>
             <div>
-              <p class="ai-hero-title">🤖 Analyste IA
-                <span class="ai-badge">EN CONSTRUCTION</span>
+              <p class="ai-hero-title">🤖 Analyste IA immobilier
+                <span class="ai-badge">RAG ACTIF</span>
               </p>
               <p class="ai-hero-sub">
-                Un assistant conversationnel permettra bientôt d’explorer cette
-                plateforme d’intelligence immobilière en langage naturel.
+                Interrogez les sources officielles sur le DPE, la réglementation
+                énergétique et la méthodologie DVF.
               </p>
               <p class="ai-hero-q">« {question} »</p>
             </div>
@@ -186,24 +197,103 @@ def render_ai_hero() -> None:
         """,
         unsafe_allow_html=True,
     )
-    if st.button("✨ Découvrir l’Analyste IA", key="ai_hero_button"):
-        st.session_state["nav_page"] = "✨ Analyste IA — bientôt"
+    if st.button("✨ Ouvrir l’Analyste IA", key="ai_hero_button"):
+        st.session_state["nav_page"] = RAG_PAGE
         st.rerun()
 
 
-def render_ai_preview() -> None:
-    """Render the dedicated AI Analyst preview page (no LLM, disabled input)."""
+def initial_chat_messages() -> list[dict[str, Any]]:
+    """Return a fresh welcome conversation for one Streamlit session."""
+    return [
+        {
+            "role": "assistant",
+            "content": (
+                "Bonjour ! Je suis l’assistant documentaire du projet. Posez-moi "
+                "une question sur le **DPE**, les **passoires énergétiques**, "
+                "l’**audit énergétique** ou la **méthodologie DVF**. Mes réponses "
+                "s’appuient uniquement sur les documents officiels indexés."
+            ),
+            "citations": [],
+            "insufficient_context": False,
+        }
+    ]
+
+
+def group_citations_by_source(
+    citations: list[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Group passage citations by source URL while preserving first-seen order."""
+    grouped: dict[str, dict[str, Any]] = {}
+    for citation in citations:
+        key = str(citation.get("url") or citation.get("source_id") or "source")
+        if key not in grouped:
+            grouped[key] = {
+                "url": citation.get("url"),
+                "title": citation.get("title", "Source officielle"),
+                "publisher": citation.get("publisher", ""),
+                "sections": [],
+                "references": [],
+            }
+        reference = str(citation.get("citation_id", "")).strip()
+        section = str(citation.get("section", "")).strip()
+        if reference and reference not in grouped[key]["references"]:
+            grouped[key]["references"].append(reference)
+        if section and section not in grouped[key]["sections"]:
+            grouped[key]["sections"].append(section)
+    return list(grouped.values())
+
+
+def render_rag_sources(citations: list[Mapping[str, Any]]) -> None:
+    """Render compact, expandable and deduplicated official provenance."""
+    sources = group_citations_by_source(citations)
+    if not sources:
+        return
+    with st.expander(f"Sources officielles · {len(sources)}"):
+        for source in sources:
+            references = ", ".join(source["references"])
+            title = str(source["title"])
+            url = str(source["url"] or "")
+            publisher = str(source["publisher"])
+            heading = f"**{references} — {title}**" if references else f"**{title}**"
+            st.markdown(heading)
+            if publisher:
+                st.caption(publisher)
+            if source["sections"]:
+                st.caption("Section : " + " · ".join(source["sections"][:2]))
+            if url:
+                st.markdown(f"[Consulter la source officielle]({url})")
+
+
+def render_chat_message(message: Mapping[str, Any]) -> None:
+    """Render one persisted chat message and its optional provenance."""
+    role = str(message.get("role", "assistant"))
+    avatar = "🏛️" if role == "assistant" else "👤"
+    with st.chat_message(role, avatar=avatar):
+        st.markdown(str(message.get("content", "")))
+        render_rag_sources(list(message.get("citations", [])))
+        if message.get("insufficient_context"):
+            st.caption(
+                "Le corpus actuel ne contient pas assez d’éléments fiables pour "
+                "compléter cette réponse."
+            )
+
+
+def render_rag_chat(client: RealEstateApiClient) -> None:
+    """Render a compact documentary chat designed for future agent expansion."""
     _inject_ai_styles()
     st.markdown(
         """
-        <div class="ai-hero">
+        <div class="ai-hero ai-hero-compact">
           <div class="ai-hero-row">
-            <div class="ai-orb"></div>
+            <div class="ai-orb ai-orb-compact"></div>
             <div>
-              <p class="ai-hero-title">🤖 Analyste IA d’investissement immobilier</p>
+              <p class="ai-hero-title">🤖 Analyste IA immobilier
+                <span class="ai-badge">RAG ACTIF</span>
+              </p>
               <p class="ai-hero-sub">
                 <span class="ai-status-dot"></span>
-                Bientôt disponible — moteur conversationnel en préparation.
+                Posez votre question naturellement. Les réponses documentaires
+                sont vérifiées dans les sources officielles.
               </p>
             </div>
           </div>
@@ -212,52 +302,100 @@ def render_ai_preview() -> None:
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        "L’Analyste IA s’appuiera sur le moteur analytique déterministe déjà en "
-        "place pour répondre en langage naturel, avec des chiffres calculés par "
-        "SQL/Python (jamais inventés par le modèle) et des sources citées."
-    )
-
-    st.info(
-        "💬 **Message d’accueil (aperçu)** — « Bonjour ! Je pourrai bientôt "
-        "analyser le marché parisien, comparer des arrondissements, expliquer "
-        "les DPE et la réglementation, et générer des graphiques. Le moteur "
-        "conversationnel n’est pas encore activé. »"
-    )
-
-    st.subheader("Exemples de questions futures")
-    cols = st.columns(2)
-    for i, q in enumerate(AI_EXAMPLE_QUESTIONS):
-        with cols[i % 2]:
-            st.button(q, key=f"ai_example_{i}", disabled=True,
-                      use_container_width=True)
-
-    st.subheader("Capacités prévues")
-    caps = [
-        "Analyses de marché", "Comparaisons d’arrondissements", "Analyse DPE",
-        "Recherche documentaire réglementaire", "Citations de sources",
-        "Génération de graphiques", "Orchestration multi-outils",
-    ]
-    st.markdown("".join(f"- {c}\n" for c in caps))
-
-    st.subheader("Fondations du projet")
-    r1, r2 = st.columns(2)
-    for i, (name, done) in enumerate(AI_ROADMAP):
-        target = r1 if i % 2 == 0 else r2
-        badge = "✅ Terminé" if done else "🕒 À venir"
-        target.markdown(f"**{name}** — {badge}")
-
-    st.divider()
-    st.chat_input(
-        "L’assistant IA sera activé après les phases RAG, AI Tools et "
-        "orchestration…",
-        disabled=True,
-    )
     st.caption(
-        "🔒 Aucune requête n’est envoyée à un modèle de langage. Le moteur "
-        "conversationnel sera activé une fois les phases RAG, AI Tools et "
-        "orchestration agentique terminées."
+        "Sources actuelles : DPE · réglementation énergétique · audit · DVF/ADEME. "
+        "Les prix, comparaisons et graphiques seront connectés à la phase Agent."
     )
+
+    title_col, action_col = st.columns([6, 1])
+    title_col.markdown("### Conversation")
+    if action_col.button(
+        "↻ Effacer",
+        key="clear_rag_chat",
+        use_container_width=True,
+        help="Effacer uniquement l’historique affiché dans cette session.",
+    ):
+        st.session_state[RAG_CHAT_STATE_KEY] = initial_chat_messages()
+        st.rerun()
+
+    messages = st.session_state.get(RAG_CHAT_STATE_KEY)
+    if not isinstance(messages, list):
+        messages = initial_chat_messages()
+        st.session_state[RAG_CHAT_STATE_KEY] = messages
+
+    suggested_question: str | None = None
+    if len(messages) == 1:
+        st.markdown("**Suggestions**")
+        columns = st.columns(2)
+        for index, question in enumerate(RAG_EXAMPLE_QUESTIONS):
+            with columns[index % 2]:
+                if st.button(
+                    question,
+                    key=f"rag_example_{index}",
+                    use_container_width=True,
+                ):
+                    suggested_question = question
+
+    chat_window = st.container(height=520, border=True)
+    with chat_window:
+        for message in messages:
+            render_chat_message(message)
+
+    submitted_question = st.chat_input(
+        "Écrivez votre message…",
+        key="rag_chat_input",
+        max_chars=2_000,
+    )
+    question = submitted_question or suggested_question
+    if not question:
+        return
+
+    user_message = {"role": "user", "content": question}
+    messages.append(user_message)
+    with chat_window:
+        render_chat_message(user_message)
+        with st.chat_message("assistant", avatar="🏛️"):
+            try:
+                with st.status(
+                    "Analyse de votre demande…",
+                    expanded=True,
+                ) as status:
+                    st.write("Identification du type de question…")
+                    payload = client.ask_rag(question, "auto")
+                    completion_label = (
+                        "Réponse conversationnelle"
+                        if payload.get("model") == "local-conversation-router"
+                        else "Réponse vérifiée dans les sources officielles"
+                    )
+                    status.update(
+                        label=completion_label,
+                        state="complete",
+                        expanded=False,
+                    )
+                st.markdown(str(payload.get("answer", "")))
+                render_rag_sources(list(payload.get("citations", [])))
+                assistant_message = {
+                    "role": "assistant",
+                    "content": payload.get("answer", ""),
+                    "citations": payload.get("citations", []),
+                    "insufficient_context": payload.get(
+                        "insufficient_context", False
+                    ),
+                }
+            except ApiClientError as exc:
+                error_message = (
+                    f"Je n’ai pas pu produire la réponse : {exc} "
+                    "Vérifiez que FastAPI est démarré, puis réessayez."
+                )
+                st.error(error_message)
+                assistant_message = {
+                    "role": "assistant",
+                    "content": error_message,
+                    "citations": [],
+                    "insufficient_context": False,
+                }
+    messages.append(assistant_message)
+    st.session_state[RAG_CHAT_STATE_KEY] = messages
 
 
 # --------------------------------------------------------------------------- #
@@ -602,52 +740,61 @@ PAGES = [
     "Comparaison",
     "DPE",
     "Profil arrondissement",
-    "✨ Analyste IA — bientôt",
+    RAG_PAGE,
 ]
 
 
 def main() -> None:
     """Configure navigation and render only the selected section."""
+    if "nav_page" not in st.session_state:
+        st.session_state["nav_page"] = PAGES[0]
+
     st.title("🏙️ Paris Real Estate Intelligence")
     st.caption(
         "Analyse déterministe du marché résidentiel parisien à partir des "
         "données publiques DVF et DPE."
     )
 
-    # Animated AI hero directly below the title/description.
-    render_ai_hero()
-
-    # Stable navigation via session state (survives reruns from the hero button).
-    if "nav_page" not in st.session_state:
-        st.session_state["nav_page"] = PAGES[0]
+    # Analytics pages advertise the assistant. Its own page renders one header only.
+    if st.session_state["nav_page"] != RAG_PAGE:
+        render_ai_hero()
 
     with st.sidebar:
         st.header("Navigation")
         page = st.radio("Analyse", PAGES, key="nav_page")
 
-        st.divider()
-        st.header("Filtres")
-        start_year, end_year = st.slider(
-            "Période",
-            min_value=2021,
-            max_value=2026,
-            value=(2021, 2025),
-        )
-
-        # The single global geographic selector appears only where it applies.
+        start_year, end_year = (2021, 2025)
         area_choice: int | None = None
-        if page in GLOBAL_AREA_PAGES:
-            area_choice = st.selectbox(
-                "Zone analysée",
-                options=[None, *range(1, 21)],
-                format_func=arrondissement_label,
-                help="« Paris entier » agrège les 20 arrondissements.",
+        st.divider()
+        if page == RAG_PAGE:
+            st.success("RAG documentaire actif")
+            st.caption(
+                "Corpus : 6 sources officielles · réponses citées · "
+                "abstention si les preuves sont insuffisantes."
             )
+        else:
+            st.header("Filtres")
+            start_year, end_year = st.slider(
+                "Période",
+                min_value=2021,
+                max_value=2026,
+                value=(2021, 2025),
+            )
+
+            # The global geographic selector appears only where it applies.
+            if page in GLOBAL_AREA_PAGES:
+                area_choice = st.selectbox(
+                    "Zone analysée",
+                    options=[None, *range(1, 21)],
+                    format_func=arrondissement_label,
+                    help="« Paris entier » agrège les 20 arrondissements.",
+                )
         st.divider()
         st.caption(f"API : {api_client().base_url}")
 
-    if page == "✨ Analyste IA — bientôt":
-        render_ai_preview()
+    client = api_client()
+    if page == RAG_PAGE:
+        render_rag_chat(client)
         return
 
     if end_year == 2026:
@@ -656,7 +803,6 @@ def main() -> None:
             "doivent être interprétés avec prudence."
         )
 
-    client = api_client()
     if page == "Vue d’ensemble":
         render_overview(client, area_choice, start_year, end_year)
     elif page == "Classements":

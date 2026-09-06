@@ -14,6 +14,10 @@ class ServiceUnavailableError(RuntimeError):
     """Raised when a required local service cannot be reached or configured."""
 
 
+class AiServiceUnavailableError(RuntimeError):
+    """Raised when the bounded RAG answer service cannot complete a request."""
+
+
 def _error_response(
     status_code: int,
     code: str,
@@ -68,6 +72,16 @@ def register_exception_handlers(app: FastAPI) -> None:
             503,
             "service_unavailable",
             "The database service is temporarily unavailable.",
+        )
+
+    @app.exception_handler(AiServiceUnavailableError)
+    async def ai_unavailable_handler(
+        _request: Request, _exc: AiServiceUnavailableError
+    ) -> JSONResponse:
+        return _error_response(
+            503,
+            "ai_service_unavailable",
+            "The documentary answer service is temporarily unavailable.",
         )
 
     @app.exception_handler(SQLAlchemyError)

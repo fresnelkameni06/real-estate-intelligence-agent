@@ -1,8 +1,8 @@
-"""Navigation / AI-preview / geographic-filter tests for the dashboard.
+"""Navigation / RAG-chat / geographic-filter tests for the dashboard.
 
 Loads app/streamlit/app.py by file path (avoiding the name clash with the
-`app/` package) and uses streamlit.testing.v1.AppTest only for pages that make
-no API call, so the suite is fast and needs no FastAPI server, database or LLM.
+`app/` package) and uses streamlit.testing.v1.AppTest without submitting a
+question, so the suite needs no FastAPI server, database or LLM.
 """
 
 from __future__ import annotations
@@ -46,24 +46,26 @@ def test_global_selector_page_membership():
     assert "Comparaison" not in dash.GLOBAL_AREA_PAGES
 
 
-def test_pages_include_ai_preview():
-    """The navigation exposes a dedicated AI-analyst preview page."""
+def test_pages_include_active_rag_assistant():
+    """The navigation exposes the active documentary assistant."""
     dash = _load_app_module()
-    assert "✨ Analyste IA — bientôt" in dash.PAGES
+    assert dash.RAG_PAGE in dash.PAGES
+    assert "bientôt" not in dash.RAG_PAGE.lower()
 
 
-def test_ai_example_questions_present():
-    """Example future questions are defined for the preview (display only)."""
+def test_rag_example_questions_match_the_current_corpus():
+    """Clickable examples advertise only current documentary capabilities."""
     dash = _load_app_module()
-    assert len(dash.AI_EXAMPLE_QUESTIONS) >= 3
-    assert any("13e" in q for q in dash.AI_EXAMPLE_QUESTIONS)
+    assert len(dash.RAG_EXAMPLE_QUESTIONS) >= 3
+    assert any("DPE" in q for q in dash.RAG_EXAMPLE_QUESTIONS)
+    assert any("DVF" in q for q in dash.RAG_EXAMPLE_QUESTIONS)
 
 
-def test_roadmap_marks_ai_phases_upcoming():
-    """RAG / AI Tools / AI Agent must be shown as not-yet-done."""
+def test_roadmap_distinguishes_rag_from_the_future_agent():
+    """RAG is active while AI tools and multi-tool orchestration remain future."""
     dash = _load_app_module()
     roadmap = dict(dash.AI_ROADMAP)
-    assert roadmap["RAG"] is False
+    assert roadmap["RAG documentaire"] is True
     assert roadmap["AI Tools"] is False
     assert roadmap["AI Agent"] is False
     # Completed foundations are marked done.
@@ -79,34 +81,67 @@ def test_no_llm_import_in_app():
 
 
 # --------------------------------------------------------------------------- #
-# AI preview page render (no API call on this page)
+# Active RAG page render (no API call until a question is submitted)
 # --------------------------------------------------------------------------- #
 
-def test_ai_preview_page_has_disabled_chat_input():
+def test_rag_page_has_enabled_chat_input():
     at = AppTest.from_file(APP_PATH)
-    at.session_state["nav_page"] = "✨ Analyste IA — bientôt"
+    at.session_state["nav_page"] = "✨ Analyste IA — RAG actif"
     at.run()
     assert not at.exception
     assert len(at.chat_input) == 1
-    assert at.chat_input[0].disabled is True
+    assert at.chat_input[0].disabled is False
 
 
-def test_ai_preview_states_not_connected():
+def test_rag_page_is_honest_about_current_scope():
     at = AppTest.from_file(APP_PATH)
-    at.session_state["nav_page"] = "✨ Analyste IA — bientôt"
+    at.session_state["nav_page"] = "✨ Analyste IA — RAG actif"
     at.run()
     assert not at.exception
     text = " ".join(m.value for m in at.markdown)
     text += " ".join(c.value for c in at.caption)
     lowered = text.lower()
-    assert "activé" in lowered or "aucune requête" in lowered
+    assert "documents officiels" in lowered
+    assert "phase agent" in lowered
 
 
-def test_ai_hero_button_on_ai_page():
-    """The animated hero (shown on every page) exposes its discover button."""
+def test_rag_page_has_one_header_and_clear_control():
+    """The chat page must not repeat the global assistant promotion."""
     at = AppTest.from_file(APP_PATH)
-    at.session_state["nav_page"] = "✨ Analyste IA — bientôt"
+    at.session_state["nav_page"] = "✨ Analyste IA — RAG actif"
     at.run()
     assert not at.exception
     labels = [b.label for b in at.button]
-    assert any("Analyste IA" in lbl for lbl in labels)
+    assert "↻ Effacer" in labels
+    assert not any("Ouvrir l’Analyste IA" in label for label in labels)
+
+
+def test_initial_chat_and_citation_grouping():
+    dash = _load_app_module()
+    messages = dash.initial_chat_messages()
+    assert messages[0]["role"] == "assistant"
+    assert "documents officiels" in messages[0]["content"]
+
+    grouped = dash.group_citations_by_source(
+        [
+            {
+                "citation_id": "S1",
+                "source_id": "dpe",
+                "title": "DPE",
+                "publisher": "Ministère",
+                "url": "https://example.test/dpe",
+                "section": "Validité",
+            },
+            {
+                "citation_id": "S2",
+                "source_id": "dpe",
+                "title": "DPE",
+                "publisher": "Ministère",
+                "url": "https://example.test/dpe",
+                "section": "Location",
+            },
+        ]
+    )
+    assert len(grouped) == 1
+    assert grouped[0]["references"] == ["S1", "S2"]
+    assert grouped[0]["sections"] == ["Validité", "Location"]

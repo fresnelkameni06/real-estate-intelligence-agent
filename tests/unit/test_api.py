@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
-from app.api.dependencies import get_database_engine
+from app.api.dependencies import get_database_engine, get_rag_answer_service
 from app.api.main import app
 from app.api.routes import analytics as analytics_routes
 from real_estate_agent.analytics.models import (
@@ -18,6 +18,8 @@ from real_estate_agent.analytics.models import (
     DpeDistribution,
     MarketOverview,
 )
+from real_estate_agent.rag.embeddings.provider import EmbeddingProviderError
+from real_estate_agent.rag.generation.models import AnswerCitation, RagAnswerResult
 
 
 def _filters(arrondissement: int | None = None) -> AppliedFilters:
@@ -50,6 +52,7 @@ def _overview(arrondissement: int | None = None) -> MarketOverview:
 @pytest.fixture
 def client() -> Iterator[TestClient]:
     app.dependency_overrides[get_database_engine] = lambda: object()
+    app.dependency_overrides[get_rag_answer_service] = lambda: object()
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -68,6 +71,7 @@ def test_openapi_documents_versioned_routes(client: TestClient):
     assert "/api/v1/market/overview" in paths
     assert "/api/v1/dpe/distribution" in paths
     assert "/api/v1/areas/{arrondissement}/profile" in paths
+    assert "/api/v1/rag/answer" in paths
 
 
 def test_readiness_success(client: TestClient):
@@ -242,3 +246,96 @@ def test_database_failure_does_not_leak_details(
     assert response.json()["error"]["code"] == "database_unavailable"
     assert "password" not in response.text
     assert "SELECT secret" not in response.text
+
+
+def test_rag_answer_contract(client: TestClient):
+    class FakeRagService:
+        def answer(self, question: str, *, style: str) -> RagAnswerResult:
+            assert question == "Combien de temps un DPE est-il valable ?"
+            assert style == "brief"
+            return RagAnswerResult(
+                question=question,
+                answer="Un DPE est généralement valable dix ans. [S1]",
+                citations=[
+                    AnswerCitation(
+                        citation_id="S1",
+                        chunk_id="dpe-001",
+                        source_id="dpe_page_ministere",
+                        title="Diagnostic de performance énergétique",
+                        publisher="Ministère de la Transition écologique",
+                        url="https://example.test/dpe",
+                        section="Durée de validité",
+                        page_start=None,
+                        page_end=None,
+                        similarity=0.81,
+                    )
+                ],
+                retrieved_chunks=5,
+                top_similarity=0.81,
+                model="test-model",
+                requested_style="brief",
+                grounded=True,
+                insufficient_context=False,
+            )
+
+    app.dependency_overrides[get_rag_answer_service] = lambda: FakeRagService()
+    response = client.post(
+        "/api/v1/rag/answer",
+        json={
+            "question": "  Combien de temps un DPE est-il valable ?  ",
+            "style": "brief",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["grounded"] is True
+    assert payload["citations"][0]["citation_id"] == "S1"
+
+
+@pytest.mark.parametrize("message", ["Bonjour !", "Merci", "C'est OK."])
+def test_social_messages_bypass_rag(client: TestClient, message: str):
+    class RagMustNotRun:
+        def answer(self, _question: str, *, style: str):
+            del style
+            raise AssertionError("RAG must not run for a social message")
+
+    app.dependency_overrides[get_rag_answer_service] = lambda: RagMustNotRun()
+    response = client.post(
+        "/api/v1/rag/answer",
+        json={"question": message, "style": "auto"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["model"] == "local-conversation-router"
+    assert payload["citations"] == []
+    assert payload["insufficient_context"] is False
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"question": "   ", "style": "auto"},
+        {"question": "Question", "style": "verbose"},
+        {"question": "x" * 2_001, "style": "auto"},
+    ],
+)
+def test_rag_request_validation(client: TestClient, payload: dict[str, str]):
+    response = client.post("/api/v1/rag/answer", json=payload)
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "request_validation_error"
+
+
+def test_rag_provider_failure_does_not_leak_details(client: TestClient):
+    class FailingRagService:
+        def answer(self, _question: str, *, style: str):
+            del style
+            raise EmbeddingProviderError("private provider detail")
+
+    app.dependency_overrides[get_rag_answer_service] = lambda: FailingRagService()
+    response = client.post(
+        "/api/v1/rag/answer",
+        json={"question": "Question valide", "style": "auto"},
+    )
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "ai_service_unavailable"
+    assert "private provider detail" not in response.text

@@ -10,12 +10,24 @@ from threading import Lock
 
 from sqlalchemy import Engine
 
-from app.api.errors import ServiceUnavailableError
+from app.api.errors import AiServiceUnavailableError, ServiceUnavailableError
 from real_estate_agent.database.config import load_settings
 from real_estate_agent.database.engine import make_engine
+from real_estate_agent.rag.embeddings import (
+    EmbeddingSettings,
+    OpenAIEmbeddingProvider,
+    PgVectorRepository,
+)
+from real_estate_agent.rag.generation import (
+    OpenAIResponsesGenerator,
+    RagAnswerService,
+    RagGenerationSettings,
+)
 
 _engine: Engine | None = None
 _engine_lock = Lock()
+_rag_answer_service: RagAnswerService | None = None
+_rag_service_lock = Lock()
 
 
 def get_database_engine() -> Engine:
@@ -43,3 +55,48 @@ def dispose_database_engine() -> None:
         if _engine is not None:
             _engine.dispose()
             _engine = None
+
+
+def get_rag_answer_service() -> RagAnswerService:
+    """Return the process-wide, lazily configured documentary answer service."""
+    global _rag_answer_service
+
+    if _rag_answer_service is not None:
+        return _rag_answer_service
+
+    with _rag_service_lock:
+        if _rag_answer_service is None:
+            try:
+                embedding_settings = EmbeddingSettings()
+                generation_settings = RagGenerationSettings()
+                _rag_answer_service = RagAnswerService(
+                    embedding_provider=OpenAIEmbeddingProvider(
+                        api_key=embedding_settings.require_api_key(),
+                        model=embedding_settings.model,
+                        dimensions=embedding_settings.dimensions,
+                        timeout_seconds=embedding_settings.timeout_seconds,
+                    ),
+                    repository=PgVectorRepository(get_database_engine()),
+                    response_generator=OpenAIResponsesGenerator(
+                        api_key=generation_settings.require_api_key(),
+                        model=generation_settings.model,
+                        timeout_seconds=generation_settings.timeout_seconds,
+                    ),
+                    top_k=generation_settings.retrieval_top_k,
+                    minimum_similarity=generation_settings.minimum_similarity,
+                    context_max_characters=(
+                        generation_settings.context_max_characters
+                    ),
+                    max_output_tokens=generation_settings.max_output_tokens,
+                )
+            except (RuntimeError, ValueError) as exc:
+                raise AiServiceUnavailableError from exc
+    return _rag_answer_service
+
+
+def dispose_rag_answer_service() -> None:
+    """Release the cached RAG composition during application shutdown."""
+    global _rag_answer_service
+
+    with _rag_service_lock:
+        _rag_answer_service = None

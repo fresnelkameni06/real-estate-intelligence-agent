@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from real_estate_agent.rag.generation.models import AnswerStyle
 
 
 class HealthResponse(BaseModel):
@@ -38,3 +40,18 @@ class ErrorResponse(BaseModel):
     """Envelope used by controlled API errors."""
 
     error: ErrorBody
+
+
+class RagAnswerRequest(BaseModel):
+    """One bounded documentary question submitted by the dashboard."""
+
+    question: str = Field(min_length=1, max_length=2_000)
+    style: AnswerStyle = "auto"
+
+    @field_validator("question")
+    @classmethod
+    def question_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("question must not be blank")
+        return value

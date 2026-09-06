@@ -47,6 +47,33 @@ def test_client_sends_repeated_comparison_parameters():
         client.close()
 
 
+def test_client_posts_documentary_question_to_rag_endpoint():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/v1/rag/answer"
+        assert request.read() == b'{"question":"Validite du DPE ?","style":"brief"}'
+        return httpx.Response(
+            200,
+            json={
+                "question": "Validite du DPE ?",
+                "answer": "Dix ans. [S1]",
+                "citations": [],
+                "insufficient_context": False,
+            },
+        )
+
+    client = RealEstateApiClient(
+        base_url="http://test",
+        ai_timeout_seconds=30,
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = client.ask_rag("Validite du DPE ?", "brief")
+        assert result["answer"] == "Dix ans. [S1]"
+    finally:
+        client.close()
+
+
 def test_client_surfaces_controlled_api_message():
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -83,6 +110,8 @@ def test_client_rejects_invalid_configuration():
         RealEstateApiClient(base_url="localhost:8000")
     with pytest.raises(ValueError, match="greater than zero"):
         RealEstateApiClient(base_url="http://test", timeout_seconds=0)
+    with pytest.raises(ValueError, match="AI_API_TIMEOUT_SECONDS"):
+        RealEstateApiClient(base_url="http://test", ai_timeout_seconds=0)
 
 
 def test_dashboard_formatters():

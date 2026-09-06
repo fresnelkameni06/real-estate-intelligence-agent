@@ -10,6 +10,7 @@ import httpx
 
 DEFAULT_API_BASE_URL = "http://localhost:8000"
 DEFAULT_TIMEOUT_SECONDS = 15.0
+DEFAULT_AI_TIMEOUT_SECONDS = 90.0
 
 
 class ApiClientError(RuntimeError):
@@ -48,6 +49,7 @@ class RealEstateApiClient:
         self,
         base_url: str | None = None,
         timeout_seconds: float | None = None,
+        ai_timeout_seconds: float | None = None,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         configured_url = base_url or os.getenv("API_BASE_URL", DEFAULT_API_BASE_URL)
@@ -66,7 +68,21 @@ class RealEstateApiClient:
         if configured_timeout <= 0:
             raise ValueError("API_TIMEOUT_SECONDS must be greater than zero")
 
+        configured_ai_timeout = ai_timeout_seconds
+        if configured_ai_timeout is None:
+            raw_ai_timeout = os.getenv(
+                "AI_API_TIMEOUT_SECONDS", str(DEFAULT_AI_TIMEOUT_SECONDS)
+            )
+            try:
+                configured_ai_timeout = float(raw_ai_timeout)
+            except ValueError as exc:
+                raise ValueError("AI_API_TIMEOUT_SECONDS must be numeric") from exc
+        if configured_ai_timeout <= 0:
+            raise ValueError("AI_API_TIMEOUT_SECONDS must be greater than zero")
+
         self.base_url = configured_url.rstrip("/")
+        self._default_timeout_seconds = configured_timeout
+        self._ai_timeout_seconds = configured_ai_timeout
         self._client = httpx.Client(
             base_url=self.base_url,
             timeout=configured_timeout,
@@ -111,6 +127,46 @@ class RealEstateApiClient:
         if not isinstance(payload, dict):
             raise ApiClientError("L'API a renvoyé un format inattendu.")
         return payload
+
+    def post_json(
+        self,
+        path: str,
+        payload: Mapping[str, Any],
+        *,
+        timeout_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        """POST one JSON object and convert transport/HTTP failures safely."""
+        try:
+            response = self._client.post(
+                path,
+                json=dict(payload),
+                timeout=timeout_seconds or self._default_timeout_seconds,
+            )
+        except httpx.TimeoutException as exc:
+            raise ApiClientError(
+                "L’assistant met trop de temps à répondre. Réessayez dans un instant."
+            ) from exc
+        except httpx.RequestError as exc:
+            raise ApiClientError(
+                "Impossible de joindre FastAPI. Vérifiez que le serveur est démarré."
+            ) from exc
+
+        if response.is_error:
+            message = "La requête a échoué."
+            try:
+                response_payload = response.json()
+                message = response_payload.get("error", {}).get("message", message)
+            except (ValueError, AttributeError):
+                pass
+            raise ApiClientError(f"Erreur API {response.status_code} : {message}")
+
+        try:
+            response_payload = response.json()
+        except ValueError as exc:
+            raise ApiClientError("L’API a renvoyé une réponse JSON invalide.") from exc
+        if not isinstance(response_payload, dict):
+            raise ApiClientError("L’API a renvoyé un format inattendu.")
+        return response_payload
 
     def market_overview(
         self, arrondissement: int | None, start_year: int, end_year: int
@@ -162,4 +218,12 @@ class RealEstateApiClient:
         return self.get_json(
             f"/api/v1/areas/{arrondissement}/profile",
             {"start_year": start_year, "end_year": end_year},
+        )
+
+    def ask_rag(self, question: str, style: str = "auto") -> dict[str, Any]:
+        """Ask one independent question against the official document corpus."""
+        return self.post_json(
+            "/api/v1/rag/answer",
+            {"question": question, "style": style},
+            timeout_seconds=self._ai_timeout_seconds,
         )
