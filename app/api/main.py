@@ -6,7 +6,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 
 from app.api.dependencies import (
     dispose_agent_service,
@@ -27,14 +27,21 @@ logger = logging.getLogger(__name__)
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Release shared application resources on shutdown."""
     configure_logging()
-    logger.info("application_started", extra={"event": "application_started"})
+    logger.info(
+        "application_started",
+        extra={"event": "application_started"},
+    )
+
     try:
         yield
     finally:
         dispose_agent_service()
         dispose_rag_answer_service()
         dispose_database_engine()
-        logger.info("application_stopped", extra={"event": "application_stopped"})
+        logger.info(
+            "application_stopped",
+            extra={"event": "application_stopped"},
+        )
 
 
 app = FastAPI(
@@ -51,7 +58,14 @@ app = FastAPI(
 
 app.add_middleware(RequestObservabilityMiddleware)
 register_exception_handlers(app)
+
 app.include_router(health.router)
 app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(rag.router, prefix="/api/v1")
 app.include_router(agent.router, prefix="/api/v1")
+
+
+@app.head("/health", include_in_schema=False)
+async def health_head() -> Response:
+    """Support uptime monitors that use the HTTP HEAD method."""
+    return Response(status_code=200)
