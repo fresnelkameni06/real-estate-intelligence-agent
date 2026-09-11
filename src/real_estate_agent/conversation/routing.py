@@ -103,7 +103,8 @@ _REAL_ESTATE_MARKERS = (
     "location",
     "locataire",
     "locatif",
-    "logement",
+    "logement"
+    "logements",
     "loyer",
     "m2",
     "maison",

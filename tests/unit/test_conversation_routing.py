@@ -66,6 +66,11 @@ def test_general_knowledge_is_redirected_to_real_estate_scope(question: str):
     assert "immobilière" in answer
 
 
+def test_plural_documentary_question_reaches_agent():
+    question = "Quelles restrictions concernent les logements classés G ?"
+    assert local_conversation_reply(question) is None
+
+
 def test_real_estate_questions_and_contextual_followups_reach_the_agent():
     assert local_conversation_reply("Quel est le prix dans le 13e ?") is None
     assert local_conversation_reply("How should I buy a house in Paris?") is None
